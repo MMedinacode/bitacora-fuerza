@@ -1,7 +1,7 @@
 /* Bitácora de Fuerza: guarda la app en el celular para que abra sin internet.
    La página se pide primero a la red (así llegan las actualizaciones) y, si no hay señal o tarda más de 4 s,
    sale de la copia guardada. Solo toca sus propias copias (bf-…): el sitio lo comparte con otras apps. */
-const CACHE = 'bf-v4';
+const CACHE = 'bf-v5';
 const BASE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

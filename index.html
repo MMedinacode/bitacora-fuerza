@@ -344,7 +344,7 @@ details.det summary{cursor:pointer;font-weight:600}
 'use strict';
 
 /* ================= Constantes ================= */
-const VERSION = '2026-10-17.2';
+const VERSION = '2026-10-17.3';
 const DEFAULTS = { metaSemanal: 4, descansoSeg: 180, barraKg: 20, discos: [25, 20, 15, 10, 5, 2.5, 1.25], pesoCorporal: 0, nombre: '', bienvenida: 0 };
 const TODOS_DISCOS = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_VAR = { 25: '--plate-25', 20: '--plate-20', 15: '--plate-15', 10: '--plate-10', 5: '--plate-5', 2.5: '--plate-2', 1.25: '--plate-1' };
@@ -1802,7 +1802,9 @@ document.addEventListener('click', (ev) => {
     case 'nube-enviar': pedirCodigo(); break;
     case 'nube-reenviar': { const e = SYNC.esperando; SYNC.esperando = null; render(); const el = $('#nube-email'); if (el && e) { el.value = e; pedirCodigo(); } break; }
     case 'nube-cambiar': SYNC.esperando = null; guardarLocal('bf-sync-esperando', null); render(); break;
-    case 'nube-verificar': verificarCodigo(); break;
+    case 'nube-verificar': entrarPegado(); break;
+    case 'nube-copiar-ajeno': copiarLinkAjeno(); break;
+    case 'nube-descartar-ajeno': SYNC.linkAjeno = null; render(); break;
     case 'nube-sync': sincronizar(); break;
     case 'nube-salir': cerrarSesionNube(); break;
     case 'ocultar-cuenta': guardarLocal('bf-cuenta-oculto', true); render(); break;
@@ -1955,7 +1957,7 @@ document.addEventListener('keydown', (ev) => {
   if (t.id === 'lib-q' || (t.dataset && (t.dataset.rname || t.dataset.perfil))) { ev.preventDefault(); t.blur(); }
   else if (t.id === 'pegar-link') { ev.preventDefault(); abrirLinkPegado(); }
   else if (t.id === 'nube-email') { ev.preventDefault(); pedirCodigo(); }
-  else if (t.id === 'nube-codigo') { ev.preventDefault(); verificarCodigo(); }
+  else if (t.id === 'nube-pegar') { ev.preventDefault(); entrarPegado(); }
 });
 document.addEventListener('submit', async (ev) => {
   const f = ev.target;
@@ -2193,12 +2195,17 @@ function cargarNube() {
   s.onerror = () => { SYNC.cargando = false; SYNC.estado = 'sin-red'; renderFondo(); };
   document.head.appendChild(s);
 }
-function iniciarNube() {
+const limpiarUrl = () => { try { history.replaceState(null, '', location.pathname + '#' + S.tab); } catch (e) { /* nada */ } };
+async function iniciarNube() {
   if (!window.supabase || !window.supabase.createClient || SYNC.sb) return;
-  // Solo se entra escribiendo el código del correo en esta misma app. No se aceptan sesiones que lleguen
-  // dentro de un link (alguien podría mandarte un link con SU sesión y tus datos se subirían a su cuenta).
-  SYNC.sb = window.supabase.createClient(NUBE.url, NUBE.clave, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: 'pkce', storageKey: 'bf-auth' } });
-  if (/access_token=|refresh_token=|[?&]code=/.test(location.hash + location.search)) { try { history.replaceState(null, '', location.pathname + '#' + S.tab); } catch (e) { /* nada */ } }
+  // Se entra con el link del correo (PKCE): al pedirlo, este navegador guarda una llave secreta y el link solo
+  // funciona donde está esa llave. Un link que trae la sesión de otra persona (tokens en la dirección) se descarta
+  // antes de conectar, para que nadie te haga entrar a SU cuenta y tus datos se suban ahí.
+  const errLink = /error_description=|error_code=/.test(location.hash + location.search);
+  const code = new URLSearchParams(location.search).get('code');
+  if (errLink || /access_token=|refresh_token=/.test(location.hash)) limpiarUrl();
+  if (errLink) toast('Ese link ya venció o ya se usó. Pide otro desde Ajustes → Tu cuenta.');
+  SYNC.sb = window.supabase.createClient(NUBE.url, NUBE.clave, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce', storageKey: 'bf-auth' } });
   SYNC.sb.auth.onAuthStateChange((ev, session) => {
     const antes = SYNC.sesion && SYNC.sesion.user && SYNC.sesion.user.id;
     SYNC.sesion = session || null;
@@ -2207,6 +2214,16 @@ function iniciarNube() {
     renderFondo();
   });
   if (S.db) S.db.onCambio(programarSync);
+  if (!code || errLink) return;
+  // la librería ya intentó canjear el link; si no se pudo, es que se abrió en otro navegador o es un link viejo
+  const { data } = await SYNC.sb.auth.getSession();
+  limpiarUrl();
+  if (data && data.session) { toast('¡Listo! Entraste a tu cuenta y tu bitácora se está guardando.'); return; }
+  if (SYNC.esperando) { toast('Ese link no es del último correo que pediste. Usa el más nuevo o pide otro.'); return; }
+  SYNC.linkAjeno = location.origin + location.pathname + '?code=' + encodeURIComponent(code);
+  S.bienvenidaVista = true; // el aviso va en «Hoy»: se salta la bienvenida de un navegador nuevo
+  if (S.sheet && S.sheet.tipo === 'bienvenida') { S.sheet = null; S.sheetDirty = true; }
+  irA('hoy');
 }
 function programarSync(ms) { clearTimeout(SYNC.timer); SYNC.timer = setTimeout(sincronizar, typeof ms === 'number' ? ms : 2500); }
 async function primeraSync(user) {
@@ -2269,19 +2286,29 @@ async function pedirCodigo() {
   const btn = $('[data-action="nube-enviar"]'); if (btn) btn.disabled = true;
   const { error } = await SYNC.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: linkBase(), shouldCreateUser: true } });
   if (btn) btn.disabled = false;
-  if (error) { toast(/rate|seconds|limit/i.test(error.message || '') ? 'Ya se mandó un código hace poco. Espera un minuto y vuelve a intentar.' : 'No se pudo mandar el correo. Revisa la dirección e intenta de nuevo.'); return; }
+  if (error) { toast(/rate|seconds|limit/i.test(error.message || '') ? 'Ya se mandaron varios correos hace poco. Espera un rato (hasta una hora) y vuelve a intentar.' : 'No se pudo mandar el correo. Revisa la dirección e intenta de nuevo.'); return; }
   SYNC.esperando = email; guardarLocal('bf-sync-esperando', email);
   render();
-  toast(`Te mandamos un correo a ${email}. Escribe el código de 6 dígitos o toca el link.`);
+  toast(`Te mandamos un correo a ${email}. Ábrelo en este celular y toca el link.`);
 }
-async function verificarCodigo() {
-  const el = $('#nube-codigo'), token = String((el || {}).value || '').replace(/\D/g, '');
-  if (token.length < 6) { toast('El código tiene 6 dígitos.'); return; }
-  if (!SYNC.sb || !SYNC.esperando) return;
-  const { error } = await SYNC.sb.auth.verifyOtp({ email: SYNC.esperando, token, type: 'email' });
-  if (error) { toast('Ese código no sirve o ya venció. Pide uno nuevo.'); return; }
-  if (el) el.blur();
+// Si el link del correo se abrió en otro navegador, se pega aquí: solo sirve en el navegador que lo pidió.
+async function entrarPegado() {
+  const el = $('#nube-pegar'), v = String((el || {}).value || '').trim();
+  if (!v) { toast('Pega aquí el link del correo.'); return; }
+  if (!SYNC.sb) { cargarNube(); toast('Conectando… intenta de nuevo en unos segundos.'); return; }
+  const m = v.match(/[?&]code=([^&#\s]+)/), digitos = v.replace(/[\s-]/g, '');
+  let error;
+  if (m) ({ error } = await SYNC.sb.auth.exchangeCodeForSession(decodeURIComponent(m[1])));
+  else if (/^\d{6,10}$/.test(digitos) && SYNC.esperando) ({ error } = await SYNC.sb.auth.verifyOtp({ email: SYNC.esperando, token: digitos, type: 'email' }));
+  else if (/supabase\.co\/auth/.test(v)) { toast('Ese es el link del correo: ábrelo y copia la dirección de la página que se abre.'); return; }
+  else { toast('Eso no parece el link del correo.'); return; }
+  if (error) { toast('Ese link no sirve aquí: tiene que ser el del último correo que pediste desde esta app. Pide otro.'); return; }
+  if (el) { el.value = ''; el.blur(); }
   toast('¡Listo! Tu bitácora quedó guardada en tu cuenta.');
+}
+async function copiarLinkAjeno() {
+  try { await navigator.clipboard.writeText(SYNC.linkAjeno); toast('Link copiado. Abre la app y pégalo en Ajustes → Tu cuenta.'); }
+  catch (e) { toast('No se pudo copiar. Mantén apretado el link de la tarjeta y cópialo.'); }
 }
 async function cerrarSesionNube() {
   if (!SYNC.sb) return;
@@ -2304,11 +2331,11 @@ function tarjetaCuenta() {
       <div class="row"><button class="btn" data-action="nube-sync">Sincronizar ahora</button><button class="btn link" data-action="nube-salir">Cerrar sesión</button></div></article>`;
   }
   const cuerpo = SYNC.esperando
-    ? `<p class="small">Te mandamos un correo a <b>${esc(SYNC.esperando)}</b>. Escribe el código de 6 dígitos (o toca el link del correo).</p>
-       <div class="picker"><div class="row"><input class="txt" id="nube-codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="8" enterkeyhint="go" placeholder="123456" aria-label="Código del correo"><button class="btn primary" data-action="nube-verificar">Entrar</button></div></div>
-       <div class="row"><button class="btn link" data-action="nube-reenviar">Mandar otro código</button><button class="btn link" data-action="nube-cambiar">Usar otro correo</button></div>`
+    ? `<p class="small">Te mandamos un correo a <b>${esc(SYNC.esperando)}</b>. Ábrelo <b>en este mismo celular</b> y toca el link («Log In» o «Confirm your mail»; viene en inglés). Si no está, revisa Spam.</p>
+       <div class="picker"><label class="lbl" for="nube-pegar">¿El link se abrió en otro navegador? Copia la dirección de esa página y pégala aquí</label><div class="row"><input class="txt" id="nube-pegar" type="url" inputmode="url" autocomplete="off" enterkeyhint="go" placeholder="Pega el link aquí" aria-label="Link del correo"><button class="btn primary" data-action="nube-verificar">Entrar</button></div></div>
+       <div class="row"><button class="btn link" data-action="nube-reenviar">Mandar otro correo</button><button class="btn link" data-action="nube-cambiar">Usar otro correo</button></div>`
     : `<div class="picker"><label class="lbl" for="nube-email">Tu correo</label><div class="row"><input class="txt" id="nube-email" type="email" inputmode="email" autocomplete="email" enterkeyhint="send" placeholder="tu@correo.com"><button class="btn primary" data-action="nube-enviar">Entrar</button></div></div>
-       <p class="muted small">Sin contraseña: te llega un código al correo. Lo que ya tienes en este celular se sube a tu cuenta.</p>`;
+       <p class="muted small">Sin contraseña: te llega un link al correo. Lo que ya tienes en este celular se sube a tu cuenta.</p>`;
   return `<article class="card destacada"><header><h3>Guarda tu bitácora en tu cuenta</h3><p class="muted small">Así no pierdes nada si cambias de celular, y la puedes abrir también en el computador.</p></header>${cuerpo}</article>`;
 }
 
@@ -2588,6 +2615,11 @@ function registrarSW() {
 }
 function avisosApp() {
   let h = '';
+  if (SYNC.linkAjeno && !SYNC.sesion) {
+    h += `<article class="card destacada"><header><h3>Este link se abrió en otro navegador</h3><p class="muted small">El link del correo solo funciona donde lo pediste. Cópialo, abre la Bitácora donde pediste el correo (por ejemplo, la app instalada) y pégalo en <b>Ajustes → Tu cuenta</b>.</p></header>
+      <input class="txt" readonly value="${esc(SYNC.linkAjeno)}" aria-label="Link para copiar">
+      <div class="row"><button class="btn primary" data-action="nube-copiar-ajeno">Copiar link</button><button class="btn link" data-action="nube-descartar-ajeno">Ocultar</button></div></article>`;
+  }
   const safariIOS = esIOS() && !esInstalada();
   if (!esInstalada() && (safariIOS || !leerLocal('bf-instalar-oculto'))) {
     const pasos = promptInstalar
