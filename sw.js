@@ -1,7 +1,7 @@
 /* Bitácora de Fuerza: guarda la app en el celular para que abra sin internet.
    La página se pide primero a la red (así llegan las actualizaciones) y, si no hay señal o tarda más de 4 s,
    sale de la copia guardada. Solo toca sus propias copias (bf-…): el sitio lo comparte con otras apps. */
-const CACHE = 'bf-v3';
+const CACHE = 'bf-v4';
 const BASE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -34,7 +34,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   // fuentes de Google y la librería de Supabase (versión fija) se guardan; las llamadas a la base de datos nunca
-  const fuentes = url.hostname.endsWith('gstatic.com') || url.hostname.endsWith('googleapis.com') || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('@supabase/supabase-js@'));
+  const fuentes = url.hostname.endsWith('gstatic.com') || url.hostname.endsWith('googleapis.com') || (url.hostname === 'cdn.jsdelivr.net' && url.pathname === '/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js');
   if (!propio && !fuentes) return;
   e.respondWith(caches.match(req).then((guardada) => {
     const red = fetch(req).then((r) => {

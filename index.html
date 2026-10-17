@@ -344,7 +344,7 @@ details.det summary{cursor:pointer;font-weight:600}
 'use strict';
 
 /* ================= Constantes ================= */
-const VERSION = '2026-10-17.1';
+const VERSION = '2026-10-17.2';
 const DEFAULTS = { metaSemanal: 4, descansoSeg: 180, barraKg: 20, discos: [25, 20, 15, 10, 5, 2.5, 1.25], pesoCorporal: 0, nombre: '', bienvenida: 0 };
 const TODOS_DISCOS = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_VAR = { 25: '--plate-25', 20: '--plate-20', 15: '--plate-15', 10: '--plate-10', 5: '--plate-5', 2.5: '--plate-2', 1.25: '--plate-1' };
@@ -2156,7 +2156,9 @@ function crearDbLocal() {
     aplicarRemoto: (filas) => {
       let cambio = false;
       for (const f of filas) {
-        if (!mem[f.col] || typeof f.doc_id !== 'string') continue;
+        // solo colecciones conocidas e ids normales (nada de __proto__ ni similares)
+        if (!Object.prototype.hasOwnProperty.call(vacio(), f.col) || typeof f.doc_id !== 'string' || !/^[A-Za-z0-9_.:@+~-]{1,200}$/.test(f.doc_id) || ['__proto__', 'constructor', 'prototype'].includes(f.doc_id)) continue;
+        if (!f.deleted && f.data !== null && (typeof f.data !== 'object' || Array.isArray(f.data))) continue;
         const k = f.col + '/' + f.doc_id, tsR = Date.parse(f.updated_at) || 0, tsL = cola[k] ? Date.parse(cola[k]) || 0 : 0;
         if (cola[k] && tsL > tsR) continue; // lo de aquí es más nuevo: se sube después
         if (meta[k] && (Date.parse(meta[k]) || 0) >= tsR && !cola[k]) continue; // ya lo tenía
@@ -2176,20 +2178,27 @@ function crearDbLocal() {
 /* ================= Cuenta y sincronización (Supabase) ================= */
 /* Los datos siguen viviendo en el celular (funciona sin internet). Si entras con tu correo, se copian a tu
    cuenta y se bajan en tus otros dispositivos. Cada cuenta solo puede ver sus propias filas (RLS). */
-const NUBE = { url: 'https://iazkixwgzfeaxyfoxdfs.supabase.co', clave: 'sb_publishable_r5YPf3LsTS4LDVdR0mYcVw_7cv8Kyp2', lib: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js' };
+const NUBE = {
+  url: 'https://iazkixwgzfeaxyfoxdfs.supabase.co', clave: 'sb_publishable_r5YPf3LsTS4LDVdR0mYcVw_7cv8Kyp2',
+  lib: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js',
+  integridad: 'sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o', // si el archivo del CDN cambia, no se ejecuta
+};
 const SYNC = { sb: null, sesion: null, estado: 'apagado', ultimo: leerLocal('bf-sync-ultimo'), esperando: leerLocal('bf-sync-esperando'), corriendo: false, otraVez: false, timer: null, cargando: false };
 function cargarNube() {
   if (SYNC.sb || SYNC.cargando || location.protocol === 'file:') return;
   SYNC.cargando = true;
   const s = document.createElement('script');
-  s.src = NUBE.lib; s.async = true;
+  s.src = NUBE.lib; s.async = true; s.integrity = NUBE.integridad; s.crossOrigin = 'anonymous';
   s.onload = () => { SYNC.cargando = false; iniciarNube(); };
   s.onerror = () => { SYNC.cargando = false; SYNC.estado = 'sin-red'; renderFondo(); };
   document.head.appendChild(s);
 }
 function iniciarNube() {
   if (!window.supabase || !window.supabase.createClient || SYNC.sb) return;
-  SYNC.sb = window.supabase.createClient(NUBE.url, NUBE.clave, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit', storageKey: 'bf-auth' } });
+  // Solo se entra escribiendo el código del correo en esta misma app. No se aceptan sesiones que lleguen
+  // dentro de un link (alguien podría mandarte un link con SU sesión y tus datos se subirían a su cuenta).
+  SYNC.sb = window.supabase.createClient(NUBE.url, NUBE.clave, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: 'pkce', storageKey: 'bf-auth' } });
+  if (/access_token=|refresh_token=|[?&]code=/.test(location.hash + location.search)) { try { history.replaceState(null, '', location.pathname + '#' + S.tab); } catch (e) { /* nada */ } }
   SYNC.sb.auth.onAuthStateChange((ev, session) => {
     const antes = SYNC.sesion && SYNC.sesion.user && SYNC.sesion.user.id;
     SYNC.sesion = session || null;
