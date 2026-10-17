@@ -286,6 +286,23 @@ textarea.txt{min-height:64px;padding:10px 12px;resize:vertical;font-family:var(-
 @keyframes timerAviso{0%,100%{background:var(--surface)}50%{background:var(--ok-soft)}}
 .timer.listo{animation:timerAviso .5s ease-in-out 6}
 .txt[readonly]{font-size:16px}
+/* Tipos de serie */
+button.sn{border:0;background:var(--surface-2);border-radius:8px;min-height:44px;width:100%;padding:0;display:grid;place-items:center;align-content:center;line-height:1;color:var(--ink-3);font-family:var(--font-display);font-weight:700;font-size:16px}
+button.sn small{font-size:10px;font-weight:600;letter-spacing:.02em;margin-top:2px;color:var(--ink-2)}
+.srow.rec button.sn{color:var(--record)}
+.t-bilbo button.sn{background:var(--accent);color:var(--accent-ink)}
+.t-top button.sn{background:var(--ink);color:var(--surface)}
+.t-backoff button.sn{background:var(--accent-soft);color:var(--accent)}
+.t-drop button.sn{background:var(--warn-soft);color:var(--warn)}
+.t-fallo button.sn{background:var(--record-soft);color:var(--record)}
+.t-cal button.sn{background:transparent;border:1px dashed var(--line);color:var(--ink-3)}
+.t-bilbo button.sn small,.t-top button.sn small{color:inherit;opacity:.85}
+.srow{grid-template-columns:36px minmax(0,1fr) 72px 60px 46px}
+@media (max-width:374px){.srow{grid-template-columns:32px minmax(0,1fr) 62px 50px 44px}}
+.panel-serie{display:grid;gap:8px}
+.sug-bilbo{background:var(--accent-soft);color:var(--accent)}
+details.det{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 12px}
+details.det summary{cursor:pointer;font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -323,7 +340,7 @@ textarea.txt{min-height:64px;padding:10px 12px;resize:vertical;font-family:var(-
 'use strict';
 
 /* ================= Constantes ================= */
-const VERSION = '2026-10-16.1';
+const VERSION = '2026-10-16.2';
 const DEFAULTS = { metaSemanal: 4, descansoSeg: 180, barraKg: 20, discos: [25, 20, 15, 10, 5, 2.5, 1.25], pesoCorporal: 0, nombre: '', bienvenida: 0 };
 const TODOS_DISCOS = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_VAR = { 25: '--plate-25', 20: '--plate-20', 15: '--plate-15', 10: '--plate-10', 5: '--plate-5', 2.5: '--plate-2', 1.25: '--plate-1' };
@@ -513,12 +530,31 @@ function infoEj(id) {
 }
 /* descanso null = usar el «Descanso por defecto» de Ajustes (cardio no lleva descanso). */
 const descansoInicial = (t) => (t === 'cardio' ? 0 : null);
-function itemDefault(ej) { const t = infoEj(ej).tipo; return { ej, series: DEF[t].series, reps: DEF[t].reps, descanso: descansoInicial(t) }; }
+function itemDefault(ej) { const t = infoEj(ej).tipo; return { ej, series: DEF[t].series, reps: DEF[t].reps, descanso: descansoInicial(t), metodo: 'normal' }; }
+/* Tipos de serie. Las de "trabajo" (normal, top, back-off, fallo) son las que cuentan para récords y para subir de peso. */
+const TIPOS_SERIE = {
+  normal: { l: '', n: 'Normal' }, cal: { l: 'C', n: 'Calentamiento' }, bilbo: { l: 'B', n: 'Bilbo' }, top: { l: 'T', n: 'Top set' },
+  backoff: { l: 'BO', n: 'Back-off' }, drop: { l: 'D', n: 'Drop set' }, fallo: { l: 'F', n: 'Al fallo' },
+};
+const tipoSerie = (x) => (x && TIPOS_SERIE[x.tipo] ? x.tipo : 'normal');
+const esTrabajo = (x) => ['normal', 'top', 'backoff', 'fallo'].includes(tipoSerie(x));
+/* Métodos por ejercicio: cómo se arman sus series al empezar. */
+const METODOS = {
+  normal: 'Series normales', bilbo: 'Bilbo + series pesadas', top: 'Top set + back-off', drop: 'Con drop set al final', fallo: 'Última serie al fallo',
+};
+const resumenMetodo = (it, info) => {
+  const u = info.tipo === 'tiempo' ? ' s' : info.tipo === 'cardio' ? ' min' : '';
+  if (it.metodo === 'bilbo') return `Bilbo + ${it.series} × ${it.reps}`;
+  if (it.metodo === 'top') return `Top + ${Math.max(0, it.series - 1)} back-off × ${it.reps}`;
+  if (it.metodo === 'drop') return `${it.series} × ${it.reps} + drop`;
+  if (it.metodo === 'fallo') return `${it.series} × ${it.reps}${u} (última al fallo)`;
+  return `${it.series} × ${it.reps}${u}`;
+};
 function normRutina(id, d) {
   const items = Array.isArray(d.items) ? d.items : (Array.isArray(d.ejercicios) ? d.ejercicios.map(itemDefault) : []);
   return {
     id, nombre: d.nombre || 'Rutina', nombreCrudo: typeof d.nombre === 'string' ? d.nombre : 'Rutina', orden: d.orden || 0,
-    items: items.map((it) => { const t = infoEj(it.ej).tipo; return { ej: it.ej, series: it.series || DEF[t].series, reps: it.reps || DEF[t].reps, descanso: typeof it.descanso === 'number' ? it.descanso : descansoInicial(t) }; }),
+    items: items.map((it) => { const t = infoEj(it.ej).tipo; return { ej: it.ej, series: it.series || DEF[t].series, reps: it.reps || DEF[t].reps, descanso: typeof it.descanso === 'number' ? it.descanso : descansoInicial(t), metodo: METODOS[it.metodo] ? it.metodo : 'normal' }; }),
   };
 }
 const descansoDe = (d) => (typeof d === 'number' ? d : S.ajustes.descansoSeg);
@@ -585,13 +621,48 @@ function historial(ejId, excluir) {
     if (s.id === excluir) continue;
     const sets = [];
     let nota = '';
-    for (const it of s.items) if (it.ej === ejId) { if (it.nota) nota = it.nota; for (const x of it.series) if (x.hecho) sets.push(x); }
+    for (const it of s.items) if (it.ej === ejId) { if (it.nota) nota = it.nota; for (const x of it.series) if (x.hecho && esTrabajo(x)) sets.push(x); }
     if (!sets.length) continue;
     let top = 0, best = 0, vol = 0;
     for (const x of sets) { top = Math.max(top, Number(x.peso) || 0); best = Math.max(best, metrica(info, x)); vol += (Number(x.peso) || 0) * (Number(x.reps) || 0); }
     out.push({ sesionId: s.id, fecha: s.fecha, inicio: s.inicio, sets, top, best, vol, nota });
   }
   return out.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0));
+}
+/* Todas las series hechas la última vez (de cualquier tipo), para la columna «Anterior». */
+function ultimasSeries(ejId, excluir) {
+  let mejor = null;
+  for (const s of getSesiones()) {
+    if (s.id === excluir || (mejor && s.inicio <= mejor.inicio)) continue;
+    const sets = s.items.filter((it) => it.ej === ejId).flatMap((it) => it.series).filter((x) => x.hecho);
+    if (sets.length) mejor = { inicio: s.inicio, sets };
+  }
+  return mejor ? mejor.sets : [];
+}
+/* La serie de la vez anterior que corresponde a esta: la n-ésima del mismo tipo. */
+function anteriorDe(prevSets, series, i) {
+  const t = tipoSerie(series[i]), n = series.slice(0, i).filter((x) => tipoSerie(x) === t).length;
+  return prevSets.filter((x) => tipoSerie(x) === t)[n] || null;
+}
+/* Bilbo: una serie con todas las reps posibles. Si llegaste a 15 o más, sube el peso; si no, vuelve a empezar más liviano. */
+function bilboHist(ejId, excluir) {
+  const out = [];
+  for (const s of getSesiones()) {
+    if (s.id === excluir) continue;
+    for (const it of s.items) if (it.ej === ejId) for (const x of it.series) if (x.hecho && tipoSerie(x) === 'bilbo') out.push({ inicio: s.inicio, fecha: s.fecha, peso: Number(x.peso) || 0, reps: Number(x.reps) || 0 });
+  }
+  return out.sort((a, b) => (a.inicio < b.inicio ? -1 : 1));
+}
+const redondear = (v, paso) => (paso > 0 ? Math.round(v / paso) * paso : v);
+function sugerenciaBilbo(ejId, excluir) {
+  const info = infoEj(ejId), h = bilboHist(ejId, excluir), ult = h[h.length - 1];
+  const paso = info.tipo === 'barra' ? 2.5 : (info.inc || 2.5);
+  const trabajo = historial(ejId, excluir), best = trabajo.reduce((m, x) => Math.max(m, x.best), 0);
+  const inicio = best > 0 ? Math.max(info.tipo === 'barra' ? S.ajustes.barraKg : 0, redondear(best * 0.5, paso)) : null;
+  if (!ult) return { peso: inicio, texto: `Bilbo: una sola serie con todas las reps que puedas (entre 15 y 50).${inicio ? ` Parte con ${kg(inicio)} kg (la mitad de tu máximo estimado).` : ' Elige un peso que puedas mover unas 30 veces.'} Cada sesión le subes ${kg(paso)} kg.` };
+  if (ult.reps >= 15) return { peso: ult.peso + paso, texto: `Bilbo: la última vez ${kg(ult.peso)} kg × ${ult.reps}. Hoy ${kg(ult.peso + paso)} kg, todas las reps que puedas. Si bajas de 15, la próxima vuelves a empezar.` };
+  const reinicio = inicio !== null ? inicio : redondear(ult.peso * 0.7, paso);
+  return { peso: reinicio, texto: `Bilbo: la última vez hiciste ${ult.reps} reps (menos de 15). Vuelves a empezar con ${kg(reinicio)} kg y subes de nuevo cada sesión.` };
 }
 /* Progresión doble: si completas las reps meta en todas las series con el peso más alto, toca subir. */
 function sugerencia(ejId, meta, excluir) {
@@ -618,7 +689,9 @@ function sugerencia(ejId, meta, excluir) {
 }
 function planInicial(item) {
   const info = infoEj(item.ej), sug = sugerencia(item.ej, item.reps), h = historial(item.ej), ult = h[h.length - 1];
+  const metodo = METODOS[item.metodo] ? item.metodo : 'normal', reps = item.reps || DEF[info.tipo].reps;
   const n = item.series || DEF[info.tipo].series, filas = [];
+  const paso = info.tipo === 'barra' ? 2.5 : (info.inc || 2.5);
   for (let i = 0; i < n; i++) {
     let peso;
     if (info.tipo === 'tiempo') peso = null;
@@ -629,20 +702,34 @@ function planInicial(item) {
     }
     else if (ult) peso = Number((ult.sets[i] || ult.sets[ult.sets.length - 1]).peso) || 0;
     else peso = info.tipo === 'barra' ? S.ajustes.barraKg : (info.tipo === 'corporal' ? 0 : null);
-    filas.push({ peso, reps: item.reps || DEF[info.tipo].reps, hecho: false });
+    filas.push({ peso, reps, hecho: false });
   }
-  return { ej: item.ej, nombre: info.nombre, tipo: info.tipo, meta: item.reps || DEF[info.tipo].reps, descanso: typeof item.descanso === 'number' ? item.descanso : null, series: filas };
+  if (metodo === 'top' && filas.length) {
+    // la primera es la pesada; las demás, un 10 % más livianas
+    const top = filas[0].peso;
+    filas[0].tipo = 'top';
+    for (let i = 1; i < filas.length; i++) { filas[i].tipo = 'backoff'; if (top) filas[i].peso = Math.max(0, redondear(top * 0.9, paso)); }
+  } else if (metodo === 'fallo' && filas.length) {
+    const x = filas[filas.length - 1]; x.tipo = 'fallo'; x.rir = 0;
+  } else if (metodo === 'drop' && filas.length) {
+    const ref = filas[filas.length - 1];
+    filas.push({ peso: ref.peso ? Math.max(0, redondear(ref.peso * 0.8, paso)) : ref.peso, reps, hecho: false, tipo: 'drop', rir: 0 });
+  } else if (metodo === 'bilbo') {
+    const sb = sugerenciaBilbo(item.ej);
+    filas.unshift({ peso: sb.peso, reps: 15, hecho: false, tipo: 'bilbo' });
+  }
+  return { ej: item.ej, nombre: info.nombre, tipo: info.tipo, meta: reps, metodo, descanso: typeof item.descanso === 'number' ? item.descanso : null, series: filas };
 }
 function mejorAntes(ejId, s, hastaK, hastaI) {
   const info = infoEj(ejId);
   let best = 0;
   for (const o of getSesiones()) {
     if (o.id === s.id) continue;
-    for (const it of o.items) if (it.ej === ejId) for (const x of it.series) if (x.hecho) best = Math.max(best, metrica(info, x));
+    for (const it of o.items) if (it.ej === ejId) for (const x of it.series) if (x.hecho && esTrabajo(x)) best = Math.max(best, metrica(info, x));
   }
   s.items.forEach((it, k) => {
     if (it.ej !== ejId) return;
-    it.series.forEach((x, i) => { if (x.hecho && (k < hastaK || (k === hastaK && i < hastaI))) best = Math.max(best, metrica(info, x)); });
+    it.series.forEach((x, i) => { if (x.hecho && esTrabajo(x) && (k < hastaK || (k === hastaK && i < hastaI))) best = Math.max(best, metrica(info, x)); });
   });
   return best;
 }
@@ -650,7 +737,7 @@ function marcasRecord(s, k) {
   const it = s.items[k], info = infoEj(it.ej), out = new Set();
   if (info.tipo === 'cardio') return out;
   it.series.forEach((x, i) => {
-    if (!x.hecho) return;
+    if (!x.hecho || !esTrabajo(x)) return;
     const antes = mejorAntes(it.ej, s, k, i);
     if (antes > 0 && metrica(info, x) > antes + 1e-9) out.add(i);
   });
@@ -663,7 +750,7 @@ function contarRecords(desde) {
     const info = infoEj(it.ej);
     if (info.tipo === 'cardio') continue;
     for (const x of it.series) {
-      if (!x.hecho) continue;
+      if (!x.hecho || !esTrabajo(x)) continue;
       const v = metrica(info, x), b = best.get(it.ej) || 0;
       if (b > 0 && v > b + 1e-9 && s.fecha >= desde) n++;
       if (v > b) best.set(it.ej, v);
@@ -752,7 +839,7 @@ function marcarSerie(k, i, forzar) {
       return;
     }
     // un dedo que se resbala (450 en vez de 45) no debería quedar como récord para siempre
-    if (!forzar && ['barra', 'mancuernas', 'maquina'].includes(info.tipo)) {
+    if (!forzar && ['barra', 'mancuernas', 'maquina'].includes(info.tipo) && esTrabajo(x)) {
       const hoyHechas = s.items.filter((y) => y.ej === it.ej).flatMap((y) => y.series).filter((y) => y.hecho).map((y) => Number(y.peso) || 0);
       const topPrev = Math.max(0, ...historial(it.ej, s.id).map((h) => h.top), ...hoyHechas);
       if ((topPrev > 0 && peso > topPrev * 1.5 + 10) || reps > 30) {
@@ -762,9 +849,16 @@ function marcarSerie(k, i, forzar) {
     }
     const antes = mejorAntes(it.ej, s, k, i);
     mutarSesion(s.id, (items) => { const y = items[k].series[i]; y.hecho = true; y.t = new Date().toISOString(); if (y.peso === null || y.peso === undefined) y.peso = 0; }, true);
-    const v = metrica(info, { peso, reps });
-    if (info.tipo !== 'cardio' && antes > 0 && v > antes + 1e-9) toast(`¡Récord en ${info.nombre}! ${fmtSet(info, { peso, reps })}`, null, 'record');
-    const seg = descansoDe(it.descanso);
+    const v = metrica(info, { peso, reps }), t = tipoSerie(x);
+    if (info.tipo !== 'cardio' && esTrabajo(x) && antes > 0 && v > antes + 1e-9) toast(`¡Récord en ${info.nombre}! ${fmtSet(info, { peso, reps })}`, null, 'record');
+    else if (t === 'bilbo') {
+      const hb = bilboHist(it.ej, s.id), u = hb[hb.length - 1];
+      if (reps < 15) toast(`Bilbo: ${reps} reps. Bajaste de 15, así que la próxima vez vuelves a empezar más liviano.`);
+      else if (u && (peso > u.peso || (peso === u.peso && reps > u.reps))) toast(`¡Mejor Bilbo en ${info.nombre}! ${kg(peso)} kg × ${reps}`, null, 'record');
+      else toast(`Bilbo anotado: ${kg(peso)} kg × ${reps}. La próxima vez le subes el peso.`);
+    }
+    // después de una serie, si la que sigue es un drop set no hay descanso
+    const sig = it.series[i + 1], seg = sig && tipoSerie(sig) === 'drop' ? 0 : descansoDe(it.descanso);
     if (seg > 0 && info.tipo !== 'cardio' && s.fecha === hoyISO() && !s.editando) iniciarDescanso(seg);
     llevar = true;
   } else {
@@ -788,8 +882,7 @@ function cambiarCelda(k, i, campo, valor) {
 }
 function usarAnterior(k, i) {
   const s = sesionActiva(); if (!s) return;
-  const it = s.items[k], h = historial(it.ej, s.id), ult = h[h.length - 1];
-  const prev = ult && ult.sets[i];
+  const it = s.items[k], prev = anteriorDe(ultimasSeries(it.ej, s.id), it.series, i);
   if (!prev) return;
   mutarSesion(s.id, (items) => { const y = items[k].series[i]; y.peso = prev.peso; y.reps = prev.reps; }, false);
   render();
@@ -797,8 +890,32 @@ function usarAnterior(k, i) {
 function agregarSerie(k) {
   const s = sesionActiva(); if (!s) return;
   mutarSesion(s.id, (items) => {
-    const sers = items[k].series, u = sers[sers.length - 1];
+    const sers = items[k].series, u = [...sers].reverse().find(esTrabajo) || sers[sers.length - 1];
     sers.push(u ? { peso: u.peso, reps: u.reps, hecho: false } : { peso: null, reps: items[k].meta || 5, hecho: false });
+  }, true);
+  render();
+}
+/* Drop set: una serie más con ~20 % menos de peso, sin descanso. */
+function agregarDrop(k) {
+  const s = sesionActiva(); if (!s || !s.items[k]) return;
+  const info = infoEj(s.items[k].ej), paso = info.tipo === 'barra' ? 2.5 : (info.inc || 2.5);
+  mutarSesion(s.id, (items) => {
+    const sers = items[k].series, u = [...sers].reverse().find((x) => x.hecho) || sers[sers.length - 1];
+    const peso = u && u.peso ? Math.max(0, redondear(Number(u.peso) * 0.8, paso)) : null;
+    // va justo después de la última serie hecha
+    const j = sers.lastIndexOf(u);
+    sers.splice(j >= 0 ? j + 1 : sers.length, 0, { peso, reps: u ? u.reps : (items[k].meta || 8), hecho: false, tipo: 'drop', rir: 0 });
+  }, true);
+  S.timer = null; guardarLocal('bf-timer', null); tick(); // el drop va sin descanso
+  render();
+  toast('Drop set agregado: baja el peso y sigue sin descansar.');
+}
+function cambiarTipoSerie(k, i, tipo, rir) {
+  const s = sesionActiva(); if (!s || !s.items[k] || !s.items[k].series[i]) return;
+  mutarSesion(s.id, (items) => {
+    const y = items[k].series[i];
+    if (tipo !== undefined) { if (tipo === 'normal') delete y.tipo; else y.tipo = tipo; if (tipo === 'bilbo' && !(Number(y.reps) >= 15)) y.reps = 15; }
+    if (rir !== undefined) { if (rir === null) delete y.rir; else y.rir = rir; }
   }, true);
   render();
 }
@@ -840,13 +957,16 @@ function armarResumen(s, items) {
   s.items.forEach((it, k) => { if (marcasRecord(s, k).size) recs.add(infoEj(it.ej).nombre); });
   for (const it of items) {
     const info = infoEj(it.ej), pesas = ['barra', 'mancuernas', 'maquina'].includes(info.tipo);
-    series += it.series.length;
-    if (pesas) for (const x of it.series) vol += (Number(x.peso) || 0) * (Number(x.reps) || 0);
-    const mejor = it.series.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), it.series[0]);
+    series += it.series.filter((x) => tipoSerie(x) !== 'cal').length;
+    if (pesas) for (const x of it.series) if (tipoSerie(x) !== 'cal') vol += (Number(x.peso) || 0) * (Number(x.reps) || 0);
+    const trabajo = it.series.filter(esTrabajo), bil = it.series.find((x) => tipoSerie(x) === 'bilbo');
+    const extra = bil ? ` · Bilbo ${kg(bil.peso)}×${bil.reps}` : '';
+    if (!trabajo.length) { porEj.push({ nombre: info.nombre, mejor: (bil ? `Bilbo ${kg(bil.peso)}×${bil.reps}` : fmtSet(info, it.series[0])), delta: null, unidad: 'kg', fechaAnt: null }); continue; }
+    const mejor = trabajo.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), trabajo[0]);
     const h = historial(it.ej, s.id).filter((x) => x.fecha <= s.fecha), ant = h[h.length - 1];
     const enKg = pesas || (info.tipo === 'corporal' && Number(S.ajustes.pesoCorporal) > 0);
     const delta = ant && ant.best > 0 && info.tipo !== 'cardio' ? metrica(info, mejor) - ant.best : null;
-    porEj.push({ nombre: info.nombre, mejor: fmtSet(info, mejor), delta, unidad: enKg ? 'kg' : info.tipo === 'tiempo' ? 's' : 'reps', fechaAnt: ant ? ant.fecha : null });
+    porEj.push({ nombre: info.nombre, mejor: fmtSet(info, mejor) + extra, delta, unidad: enKg ? 'kg' : info.tipo === 'tiempo' ? 's' : 'reps', fechaAnt: ant ? ant.fecha : null });
   }
   return { id: s.id, fecha: s.fecha, nombre: s.rutinaNombre, dur, vol: Math.round(vol), series, recs: [...recs], porEj };
 }
@@ -1187,14 +1307,15 @@ function encabezado() {
 
 function listaEjerciciosRutina(r) {
   if (!r.items.length) return '<p class="muted small">Sin ejercicios todavía.</p>';
-  return `<ul class="ej-lista">${r.items.map((it) => { const info = infoEj(it.ej); return `<li><span>${esc(info.nombre)}</span><span class="num">${it.series} × ${it.reps}${info.tipo === 'tiempo' ? ' s' : info.tipo === 'cardio' ? ' min' : ''}</span></li>`; }).join('')}</ul>`;
+  return `<ul class="ej-lista">${r.items.map((it) => { const info = infoEj(it.ej); return `<li><span>${esc(info.nombre)}</span><span class="num">${esc(resumenMetodo(it, info))}</span></li>`; }).join('')}</ul>`;
 }
 
 function resumenSesionHTML(s, titulo) {
   const filas = s.items.map((it) => {
     const info = infoEj(it.ej), hechas = it.series.filter((x) => x.hecho);
     if (!hechas.length) return '';
-    const mejor = hechas.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), hechas[0]);
+    const base = hechas.filter(esTrabajo).length ? hechas.filter(esTrabajo) : hechas;
+    const mejor = base.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), base[0]);
     return `<li><span>${esc(info.nombre)}</span><span class="num">${hechas.length} ${hechas.length === 1 ? 'serie' : 'series'} · mejor ${fmtSet(info, mejor)}</span></li>`;
   }).join('');
   return `<article class="card"><header><span class="eyebrow">${esc(titulo)} · ${fCorta(s.fecha)}</span><h3>${esc(s.rutinaNombre)}</h3><p class="muted small">${hechasDe(s)} ${hechasDe(s) === 1 ? 'serie' : 'series'}</p></header><ul class="ej-lista">${filas}</ul></article>`;
@@ -1262,12 +1383,15 @@ function htmlDiscos(s, k) {
 }
 function actualizarDiscos(k) { const s = sesionActiva(), box = document.getElementById('discos-' + k); if (s && box) box.innerHTML = htmlDiscos(s, k); }
 
-function filaSerie(it, k, x, i, info, ult, esRec) {
-  const c = CAMPOS[info.tipo], prevSet = ult && ult.sets[i], prev = prevSet ? fmtSet(info, prevSet) : '—';
-  return `<div class="srow${x.hecho ? ' hecha' : ''}${esRec ? ' rec' : ''}" role="row">
-    <span class="sn" role="cell">${esRec ? 'PR' : i + 1}</span>
+function filaSerie(it, k, x, i, info, prevSets, esRec) {
+  const c = CAMPOS[info.tipo], prevSet = anteriorDe(prevSets, it.series, i), prev = prevSet ? fmtSet(info, prevSet) : '—';
+  const t = tipoSerie(x), lt = TIPOS_SERIE[t].l, num = it.series.slice(0, i + 1).filter((y) => tipoSerie(y) === 'normal').length;
+  const etiqueta = esRec ? 'PR' : (lt || String(num));
+  const rir = typeof x.rir === 'number' ? `<small>RIR ${x.rir}</small>` : '';
+  return `<div class="srow${x.hecho ? ' hecha' : ''}${esRec ? ' rec' : ''}${t !== 'normal' ? ' t-' + t : ''}" role="row">
+    <span role="cell"><button class="sn" data-action="serie-tipo" data-k="${k}" data-i="${i}" aria-label="Serie ${i + 1}: ${TIPOS_SERIE[t].n}${rir ? `, RIR ${x.rir}` : ''}. Cambiar tipo">${etiqueta}${rir}</button></span>
     <button class="prev" role="cell" data-action="usar-anterior" data-k="${k}" data-i="${i}"${prevSet ? '' : ' disabled'} aria-label="Usar lo de la vez anterior: ${esc(prev)}">${esc(prev)}</button>
-    ${c.p ? `<input id="p-${k}-${i}" class="cell" role="cell" inputmode="decimal" autocomplete="off" data-cell="peso" data-k="${k}" data-i="${i}" value="${fmtIn(x.peso)}" aria-label="${c.p}, serie ${i + 1}">` : '<span role="cell"></span>'}
+    ${c.p ? `<input id="p-${k}-${i}" class="cell" role="cell" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" data-cell="peso" data-k="${k}" data-i="${i}" value="${fmtIn(x.peso)}" aria-label="${c.p}, serie ${i + 1} (acepta decimales como 12,5)">` : '<span role="cell"></span>'}
     <input id="r-${k}-${i}" class="cell" role="cell" inputmode="numeric" autocomplete="off" data-cell="reps" data-k="${k}" data-i="${i}" value="${fmtIn(x.reps)}" aria-label="${c.r}, serie ${i + 1}">
     <button class="check" role="cell" data-action="check" data-k="${k}" data-i="${i}" aria-pressed="${x.hecho ? 'true' : 'false'}" aria-label="${x.hecho ? 'Desmarcar' : 'Marcar como hecha'} la serie ${i + 1}">✓</button>
   </div>`;
@@ -1283,8 +1407,22 @@ function tarjetaItem(s, it, k) {
       ? `<div class="menu-ej"><span class="small">¿Quitar ${esc(info.nombre)}? Se pierden sus ${hechas} series de hoy.</span><button class="btn small danger" data-action="quitar-ej-ok" data-k="${k}">Quitar</button><button class="btn small ghost" data-action="cancel">No</button></div>`
       : `<div class="menu-ej"><button class="btn small" data-action="cambiar-ej" data-k="${k}">⇄ Cambiar por otro</button><button class="btn small" data-action="nota-ej" data-k="${k}">✎ Nota</button><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''}>↑ Subir</button><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="1"${k === s.items.length - 1 ? ' disabled' : ''}>↓ Bajar</button><button class="btn small" data-action="quitar-ej" data-k="${k}">Quitar ejercicio</button></div>`;
   }
-  const meta = it.meta ? ` · meta ${it.series.length} × ${it.meta}${info.tipo === 'tiempo' ? ' s' : info.tipo === 'cardio' ? ' min' : ''}` : '';
-  const ayuda = sug ? `<p class="sug sug-${sug.tipo}">${esc(sug.texto)}</p>` : (!ult && info.tipo !== 'cardio' && info.tipo !== 'tiempo' ? '<p class="muted small">Primera vez: elige un peso que puedas mover con buena técnica. La próxima vez la app te dirá cuándo subir.</p>' : '');
+  const trabajo = it.series.filter(esTrabajo).length;
+  const meta = it.meta ? ` · ${it.metodo && it.metodo !== 'normal' ? esc(METODOS[it.metodo]) + ' · ' : ''}meta ${trabajo} × ${it.meta}${info.tipo === 'tiempo' ? ' s' : info.tipo === 'cardio' ? ' min' : ''}` : '';
+  const conBilbo = it.series.some((x) => tipoSerie(x) === 'bilbo');
+  const ayudaBilbo = conBilbo ? `<p class="sug sug-bilbo">${esc(sugerenciaBilbo(it.ej, s.id).texto)}</p>` : '';
+  const ayuda = ayudaBilbo + (sug ? `<p class="sug sug-${sug.tipo}">${conBilbo ? 'Series pesadas: ' : ''}${esc(sug.texto)}</p>` : (!ult && info.tipo !== 'cardio' && info.tipo !== 'tiempo' ? '<p class="muted small">Primera vez: elige un peso que puedas mover con buena técnica. La próxima vez la app te dirá cuándo subir.</p>' : ''));
+  const prevSets = ultimasSeries(it.ej, s.id), pesas = ['barra', 'mancuernas', 'maquina'].includes(info.tipo);
+  const abiertaSerie = S.serieTipo && S.serieTipo.sid === s.id && S.serieTipo.k === k ? S.serieTipo.i : -1;
+  let panelSerie = '';
+  if (abiertaSerie >= 0 && it.series[abiertaSerie]) {
+    const x = it.series[abiertaSerie], t = tipoSerie(x);
+    panelSerie = `<div class="menu-ej panel-serie"><p class="small"><b>Serie ${abiertaSerie + 1}:</b> ¿qué tipo de serie es?</p>
+      <div class="seg">${Object.entries(TIPOS_SERIE).map(([v, d]) => `<button class="seg-btn" data-action="tipo-serie" data-k="${k}" data-i="${abiertaSerie}" data-v="${v}" aria-pressed="${v === t}">${d.n}</button>`).join('')}</div>
+      <p class="small"><b>RIR</b> (reps que te quedaron en reserva; 0 = al fallo)</p>
+      <div class="seg">${['—', 0, 1, 2, 3, 4].map((v) => `<button class="seg-btn" data-action="rir-serie" data-k="${k}" data-i="${abiertaSerie}" data-v="${v}" aria-pressed="${v === '—' ? typeof x.rir !== 'number' : x.rir === v}">${v}</button>`).join('')}</div>
+      <button class="btn small ghost" data-action="cerrar-serie">Listo</button></div>`;
+  }
   const notaAnt = [...h].reverse().find((x) => x.nota);
   const nota = (it.nota || S.notaAbierta === s.id + ':' + k)
     ? `<label class="lbl" for="nota-${k}">Nota (ajuste de la máquina, cómo te sentiste…)</label><textarea class="txt nota" id="nota-${k}" data-nota="${k}" rows="2" maxlength="300" placeholder="Ej: asiento en 4, agarre ancho">${esc(it.nota || '')}</textarea>`
@@ -1294,9 +1432,11 @@ function tarjetaItem(s, it, k) {
     ${menu}${notaAnt && !it.nota ? `<p class="small muted">La vez anterior anotaste: «${esc(notaAnt.nota)}»</p>` : ''}${ayuda}${nota}
     <div class="series" role="table" aria-label="Series de ${esc(info.nombre)}">
       <div class="srow shead" role="row"><span role="columnheader">#</span><span role="columnheader">Anterior</span><span role="columnheader">${c.p || ''}</span><span role="columnheader">${c.r}</span><span role="columnheader"><span class="sr">Hecha</span>✓</span></div>
-      ${it.series.map((x, i) => filaSerie(it, k, x, i, info, ult, recs.has(i))).join('')}
+      ${it.series.map((x, i) => filaSerie(it, k, x, i, info, prevSets, recs.has(i))).join('')}
     </div>
-    <div class="row between"><button class="btn link small" data-action="agregar-serie" data-k="${k}">+ Agregar serie</button>${it.series.length > 1 && it.series.some((x) => !x.hecho) ? `<button class="btn link small" data-action="quitar-serie" data-k="${k}">− Quitar una</button>` : ''}</div>
+    ${panelSerie}
+    <div class="row between"><span class="row"><button class="btn link small" data-action="agregar-serie" data-k="${k}">+ Serie</button>${pesas ? `<button class="btn link small" data-action="agregar-drop" data-k="${k}">+ Drop set</button>` : ''}</span>${it.series.length > 1 && it.series.some((x) => !x.hecho) ? `<button class="btn link small" data-action="quitar-serie" data-k="${k}">− Quitar una</button>` : ''}</div>
+    ${k === 0 && abiertaSerie < 0 && !S.vioTipos ? '<p class="muted small">Toca el número de una serie para marcarla como Bilbo, top set, drop set, al fallo o calentamiento, y anotar el RIR.</p>' : ''}
     ${info.tipo === 'barra' ? `<div class="discos" id="discos-${k}">${htmlDiscos(s, k)}</div>` : ''}
   </article>`;
 }
@@ -1333,7 +1473,8 @@ function itemEditor(r, it, k) {
   const ops = !propio || DESCANSOS.includes(it.descanso) ? DESCANSOS : [...DESCANSOS, it.descanso].sort((a, b) => a - b);
   const etiqueta = info.tipo === 'tiempo' ? 'Seg' : info.tipo === 'cardio' ? 'Min' : 'Reps';
   return `<li class="item"><div class="item-top"><b>${esc(info.nombre)}</b><span class="tag">${TIPOS[info.tipo]}</span></div>
-    <div class="cfg"><span class="mini">Series ${miniStep(r.id, k, 'series', it.series)}</span><span class="mini">${etiqueta} ${miniStep(r.id, k, 'reps', it.reps)}</span>
+    <div class="cfg"><span class="mini">${it.metodo === 'bilbo' ? 'Pesadas' : 'Series'} ${miniStep(r.id, k, 'series', it.series)}</span><span class="mini">${etiqueta} ${miniStep(r.id, k, 'reps', it.reps)}</span>
+    ${['tiempo', 'cardio'].includes(info.tipo) ? '' : `<label class="mini">Método <select id="met-${r.id}-${k}" data-cfg="metodo" data-id="${r.id}" data-k="${k}">${Object.entries(METODOS).map(([v, n]) => `<option value="${v}"${(it.metodo || 'normal') === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`}
     <label class="mini">Descanso <select id="desc-${r.id}-${k}" data-cfg="descanso" data-id="${r.id}" data-k="${k}"><option value=""${propio ? '' : ' selected'}>Normal (${mmss(S.ajustes.descansoSeg)})</option>${ops.map((v) => `<option value="${v}"${propio && v === it.descanso ? ' selected' : ''}>${v ? mmss(v) : 'sin'}</option>`).join('')}</select></label></div>
     <div class="acts"><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''} aria-label="Subir ${esc(info.nombre)}">↑</button><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="1"${k === r.items.length - 1 ? ' disabled' : ''} aria-label="Bajar ${esc(info.nombre)}">↓</button><span class="sep" aria-hidden="true"></span><button class="icon-btn" data-action="item-quitar" data-id="${r.id}" data-k="${k}" aria-label="Quitar ${esc(info.nombre)}">✕</button></div></li>`;
 }
@@ -1372,6 +1513,7 @@ function vistaSemana() {
     h += `<li><button class="dia-btn${i === hoyI ? ' hoy' : ''}" data-action="abrir-dia" data-dia="${i}"><span class="dia-n">${DIAS_LARGO[i]}</span><span class="dia-r"><b>${esc(titulo)}</b><small>${hecho ? '✓ Entrenado esta semana · ' : ''}${i === hoyI ? 'Hoy · ' : ''}${esc(sub)}</small></span><span class="chev" aria-hidden="true">›</span></button></li>`;
   });
   h += '</ul>';
+  if (plan.some((x) => x && x !== 'descanso')) h += '<div class="row"><button class="btn" data-action="compartir-semana">Compartir mi semana completa</button><button class="btn link" data-action="plantillas">Rutinas listas</button></div>';
   const sinDia = rutinasTodas().filter((r) => !plan.includes(r.id));
   if (sinDia.length) {
     const libre = plan.findIndex((x) => !x);
@@ -1485,6 +1627,7 @@ function sheetHTML() {
   if (sh.tipo === 'rutina-compartida') return sheetRutinaCompartida(sh);
   if (sh.tipo === 'link') return sheetLink(sh);
   if (sh.tipo === 'plantillas' || sh.tipo === 'bienvenida') return sheetPlantillas(sh);
+  if (sh.tipo === 'semana-compartida') return sheetSemana(sh);
   if (sh.tipo === 'elegir') {
     const plan = planDias(), todas = rutinasTodas(), hoy = hoyISO();
     const conDia = plan.map((p, i) => (p && p !== 'descanso' ? { i, r: rutinaDe(p) } : null)).filter((x) => x && x.r);
@@ -1644,6 +1787,13 @@ document.addEventListener('click', (ev) => {
     case 'cerrar-resumen': S.resumen = null; guardarLocal('bf-resumen', null); render(); break;
     case 'compartir-resumen': compartirResumen(); break;
     case 'editar-sesion': editarSesion(id); break;
+    case 'serie-tipo': { const s = sesionActiva(); if (!s) break; const ya = S.serieTipo && S.serieTipo.sid === s.id && S.serieTipo.k === k && S.serieTipo.i === i; S.serieTipo = ya ? null : { sid: s.id, k, i }; S.vioTipos = true; guardarLocal('bf-vio-tipos', true); render(); break; }
+    case 'tipo-serie': cambiarTipoSerie(k, i, b.dataset.v); break;
+    case 'rir-serie': cambiarTipoSerie(k, i, undefined, b.dataset.v === '—' ? null : Number(b.dataset.v)); break;
+    case 'cerrar-serie': S.serieTipo = null; render(); break;
+    case 'agregar-drop': agregarDrop(k); break;
+    case 'semana-ok': aplicarSemana(); break;
+    case 'compartir-semana': compartirSemana(); break;
     case 'cambiar-ej': { const s = sesionActiva(); if (s && s.items[k]) abrirBiblioteca({ tipo: 'cambiar', k }, infoEj(s.items[k].ej).musculo); break; }
     case 'nota-ej': { const s = sesionActiva(); if (!s) break; S.notaAbierta = s.id + ':' + k; S.menuEj = null; render(); const t = document.getElementById('nota-' + k); if (t) t.focus(); break; }
     case 'plantillas': S.sheet = { tipo: 'plantillas' }; S.sheetDirty = true; render(); break;
@@ -1758,6 +1908,10 @@ document.addEventListener('change', (ev) => {
   if (el.dataset && el.dataset.cfg === 'descanso') {
     const k = Number(el.dataset.k), v = el.value === '' ? null : Number(el.value);
     mutarRutina(el.dataset.id, (items) => { if (items[k]) items[k].descanso = v; });
+  } else if (el.dataset && el.dataset.cfg === 'metodo') {
+    const k = Number(el.dataset.k), v = METODOS[el.value] ? el.value : 'normal';
+    mutarRutina(el.dataset.id, (items) => { if (items[k]) { items[k].metodo = v; if (v === 'bilbo' && items[k].series > 3) items[k].series = 2; } });
+    if (v === 'bilbo') toast('Bilbo: al empezar aparece 1 serie Bilbo (todas las reps que puedas) y después las series pesadas.');
   } else if (el.dataset && el.dataset.rname) {
     // al salir del campo: si quedó vacío vuelve a «Rutina», y se guarda al tiro
     const key = 'rutinas/' + el.dataset.rname;
@@ -1874,11 +2028,12 @@ function terminarBienvenida() {
   else toast(nombre ? `¡Hola, ${nombre}! A entrenar.` : 'Listo. A entrenar.');
 }
 function abrirLinkPegado() {
-  const t = String(($('#pegar-link') || {}).value || ''), i = t.indexOf('#r=');
-  const r = i >= 0 ? leerRutinaCompartida(t.slice(i + 3).trim().split(/\s/)[0]) : null;
-  if (!r) { toast('Ese link no es una rutina o está incompleto.'); return; }
+  const t = String(($('#pegar-link') || {}).value || ''), i = t.indexOf('#r='), j = t.indexOf('#p=');
+  const codigo = (n) => t.slice(n + 3).trim().split(/\s/)[0];
+  const p = j >= 0 ? leerSemana(codigo(j)) : null, r = !p && i >= 0 ? leerRutinaCompartida(codigo(i)) : null;
+  if (!r && !p) { toast('Ese link no es una rutina ni una semana, o está incompleto.'); return; }
   const el = $('#pegar-link'); if (el) { el.value = ''; el.blur(); }
-  S.sheet = { tipo: 'rutina-compartida', rutina: r }; S.sheetDirty = true; render();
+  S.sheet = p ? { tipo: 'semana-compartida', semana: p } : { tipo: 'rutina-compartida', rutina: r }; S.sheetDirty = true; render();
 }
 async function compartirResumen() {
   if (!S.resumen) return;
@@ -2051,7 +2206,7 @@ async function compartirRutina(rid) {
   const propios = {};
   for (const it of r.items) if (S.ejercicios.has(it.ej)) { const i = infoEj(it.ej); propios[it.ej] = { nombre: i.nombre, musculo: i.musculo, tipo: i.tipo }; }
   const autor = String(S.ajustes.nombre || '').trim().slice(0, 30);
-  const datos = { v: 1, n: r.nombre, a: autor || undefined, i: r.items.map(({ ej, series, reps, descanso }) => ({ ej, series, reps, descanso })), e: propios };
+  const datos = { v: 1, n: r.nombre, a: autor || undefined, i: r.items.map(({ ej, series, reps, descanso, metodo }) => ({ ej, series, reps, descanso, m: metodo !== 'normal' ? metodo : undefined })), e: propios };
   const url = linkBase() + '#r=' + aB64(JSON.stringify(datos));
   const texto = `${autor ? `${autor} te pasa` : 'Te paso'} la rutina «${r.nombre}» para la Bitácora de Fuerza. Abre el link y toca «Agregar a mis rutinas»:`;
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
@@ -2072,18 +2227,92 @@ function sheetLink(sh) {
     <footer class="sheet-foot"><button class="btn ghost" data-action="cerrar-sheet">Cerrar</button><button class="btn primary" data-action="copiar-link">Copiar link</button></footer>
   </section></div>`;
 }
+function limpiarItems(lista) {
+  return (Array.isArray(lista) ? lista : []).filter((x) => x && /^[a-z0-9-]{1,60}$/i.test(String(x.ej))).slice(0, 40).map((x) => ({
+    ej: String(x.ej), series: Math.max(1, Math.min(10, Number(x.series) || 3)),
+    reps: Math.max(1, Math.min(600, Number(x.reps) || 10)),
+    descanso: typeof x.descanso === 'number' ? Math.max(0, Math.min(600, x.descanso)) : null,
+    metodo: METODOS[x.m] ? x.m : 'normal',
+  }));
+}
 function leerRutinaCompartida(code) {
   try {
     const d = JSON.parse(deB64(code));
     if (!d || !Array.isArray(d.i) || !d.i.length) return null;
-    const items = d.i.filter((x) => x && /^[a-z0-9-]{1,60}$/i.test(String(x.ej))).slice(0, 40).map((x) => ({
-      ej: String(x.ej), series: Math.max(1, Math.min(10, Number(x.series) || 3)),
-      reps: Math.max(1, Math.min(600, Number(x.reps) || 10)),
-      descanso: typeof x.descanso === 'number' ? Math.max(0, Math.min(600, x.descanso)) : null,
-    }));
+    const items = limpiarItems(d.i);
     if (!items.length) return null;
     return { nombre: String(d.n || 'Rutina compartida').slice(0, 60), autor: typeof d.a === 'string' ? d.a.slice(0, 30) : '', items, propios: d.e && typeof d.e === 'object' ? d.e : {}, code };
   } catch (e) { return null; }
+}
+/* ===== Semana completa por link (#p=): varias rutinas y en qué día va cada una ===== */
+function compartirSemana() {
+  const plan = planDias(), ids = [...new Set(plan.filter((x) => x && x !== 'descanso'))];
+  if (!ids.length) { toast('Tu semana está vacía: asigna rutinas a los días primero.'); return; }
+  const rutinas = ids.map(rutinaDe), propios = {};
+  for (const r of rutinas) for (const it of r.items) if (S.ejercicios.has(it.ej)) { const i = infoEj(it.ej); propios[it.ej] = { nombre: i.nombre, musculo: i.musculo, tipo: i.tipo }; }
+  const autor = String(S.ajustes.nombre || '').trim().slice(0, 30);
+  const datos = {
+    v: 1, t: 'semana', a: autor || undefined, m: S.ajustes.metaSemanal, e: propios,
+    r: rutinas.map((r) => ({ n: r.nombre, i: r.items.map(({ ej, series, reps, descanso, metodo }) => ({ ej, series, reps, descanso, m: metodo !== 'normal' ? metodo : undefined })) })),
+    d: plan.map((x) => (x === 'descanso' ? 'descanso' : x ? ids.indexOf(x) : null)),
+  };
+  const url = linkBase() + '#p=' + aB64(JSON.stringify(datos));
+  const texto = `${autor ? `${autor} te pasa` : 'Te paso'} su semana de entrenamiento para la Bitácora de Fuerza:`;
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) { navigator.share({ title: 'Semana de entrenamiento', text: texto, url }).catch(() => {}); return; }
+  S.sheet = { tipo: 'link', url, nombre: 'tu semana' }; S.sheetDirty = true; render();
+}
+function leerSemana(code) {
+  try {
+    const d = JSON.parse(deB64(code));
+    if (!d || d.t !== 'semana' || !Array.isArray(d.r) || !d.r.length || !Array.isArray(d.d)) return null;
+    const rutinas = d.r.slice(0, 7).map((r) => ({ nombre: String((r && r.n) || 'Rutina').slice(0, 60), items: limpiarItems(r && r.i) }));
+    const dias = d.d.slice(0, 7).map((x) => (x === 'descanso' ? 'descanso' : Number.isInteger(x) && x >= 0 && x < rutinas.length ? x : null));
+    while (dias.length < 7) dias.push(null);
+    return { autor: typeof d.a === 'string' ? d.a.slice(0, 30) : '', meta: [3, 4, 5].includes(d.m) ? d.m : null, rutinas, dias, propios: d.e && typeof d.e === 'object' ? d.e : {}, code };
+  } catch (e) { return null; }
+}
+function sheetSemana(sh) {
+  const p = sh.semana;
+  const filas = p.dias.map((x, i) => `<li><span><b>${DIAS_LARGO[i]}</b></span><span class="small">${x === 'descanso' ? 'Descanso' : x === null ? '—' : esc(p.rutinas[x].nombre)}</span></li>`).join('');
+  const det = p.rutinas.map((r) => `<details class="det"><summary>${esc(r.nombre)} · ${r.items.length} ejercicios</summary><ul class="ej-lista">${r.items.map((it) => `<li><span>${esc(nombreCompartido(p, it.ej))}</span><span class="num small">${esc(resumenMetodo(it, infoEj(it.ej)))}</span></li>`).join('')}</ul></details>`).join('');
+  return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
+    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">${p.autor ? `Semana de ${esc(p.autor)}` : 'Te compartieron una semana'}</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
+    <div class="sheet-body"><ul class="ej-lista">${filas}</ul>${det}
+      <p class="muted small">Se crean ${p.rutinas.length} rutinas y quedan asignadas a sus días. Tus rutinas de antes no se borran: quedan en «Rutinas guardadas sin día», y tus entrenamientos se mantienen.</p></div>
+    <footer class="sheet-foot"><button class="btn ghost" data-action="cerrar-sheet">Cancelar</button><button class="btn primary" data-action="semana-ok">Cargar esta semana</button></footer>
+  </section></div>`;
+}
+async function crearEjerciciosDe(items, propios) {
+  for (const it of items) {
+    if (LIB_MAP.has(it.ej)) continue;
+    const p = propios[it.ej] || {}, nom = String(p.nombre || 'Ejercicio').slice(0, 60), mio = S.ejercicios.get(it.ej);
+    if (mio && sinTildes(mio.nombre || '') === sinTildes(nom)) continue;
+    const igual = [...S.ejercicios.entries()].find(([, e]) => sinTildes(e.nombre || '') === sinTildes(nom));
+    if (igual) { it.ej = igual[0]; continue; }
+    const musculo = MUSCULO_NOMBRE[p.musculo] ? p.musculo : 'otro', tipo = TIPOS[p.tipo] ? p.tipo : 'maquina';
+    const nid = mio ? nuevoId('e') : it.ej;
+    const body = { nombre: nom, musculo, tipo, inc: defInc(tipo, musculo), creado: new Date().toISOString() };
+    S.ejercicios.set(nid, body); it.ej = nid;
+    await escribir('ejercicios/' + nid, () => S.db.doc('ejercicios/' + nid).set(body));
+  }
+}
+async function aplicarSemana() {
+  const sh = S.sheet; if (!sh || sh.tipo !== 'semana-compartida') return;
+  const p = clonar(sh.semana);
+  for (const r of p.rutinas) await crearEjerciciosDe(r.items, p.propios);
+  let orden = rutinasTodas().reduce((m, r) => Math.max(m, r.orden), 0);
+  const ids = p.rutinas.map((r) => {
+    const id = nuevoId('r'), body = { nombre: r.nombre, orden: ++orden, creado: new Date().toISOString(), items: r.items };
+    S.rutinasRaw.set(id, body);
+    escribir('rutinas/' + id, () => S.db.doc('rutinas/' + id).set(body));
+    return id;
+  });
+  bump();
+  S.sheet = null; S.sheetDirty = true;
+  guardarPlan(p.dias.map((x) => (typeof x === 'number' ? ids[x] : x)));
+  if (p.meta) guardarAjustes({ metaSemanal: p.meta });
+  irA('semana');
+  toast('Semana cargada. Toca un día para ver o cambiar sus ejercicios.');
 }
 const nombreCompartido = (r, ej) => (LIB_MAP.has(ej) || S.ejercicios.has(ej) ? infoEj(ej).nombre : String((r.propios[ej] && r.propios[ej].nombre) || 'Ejercicio').slice(0, 60));
 function sheetRutinaCompartida(sh) {
@@ -2130,6 +2359,12 @@ async function revisarLinkEntrante() {
     limpiar();
     if (!r) { toast('Ese link de rutina está incompleto. Pide que te lo manden de nuevo.'); return; }
     S.sheet = { tipo: 'rutina-compartida', rutina: r }; S.sheetDirty = true; render();
+  } else if (h.startsWith('#p=')) {
+    const p = leerSemana(h.slice(3));
+    limpiar();
+    if (!p) { toast('Ese link de semana está incompleto. Pide que te lo manden de nuevo.'); return; }
+    S.bienvenidaVista = true;
+    S.sheet = { tipo: 'semana-compartida', semana: p }; S.sheetDirty = true; render();
   } else if (h.startsWith('#importar=')) {
     const clave = h.slice(10).replace(/[^a-z0-9-]/gi, '');
     limpiar();
@@ -2232,6 +2467,7 @@ function start(data) {
   const tm = (data && data.timer) || leerLocal('bf-timer');
   if (tm && tm.end > Date.now() - 60000) S.timer = tm;
   S.resumen = leerLocal('bf-resumen');
+  S.vioTipos = !!leerLocal('bf-vio-tipos');
   render(); setInterval(tick, 250);
   setInterval(revisarCambioDeDia, 60000);
   conectar();
