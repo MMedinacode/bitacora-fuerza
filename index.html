@@ -251,7 +251,41 @@ input,select{font:inherit;color:var(--ink)}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tab-h) + var(--timer-h) + 12px + env(safe-area-inset-bottom,0px));z-index:50;width:min(528px,calc(100% - 32px));background:var(--ink);color:var(--bg);border-radius:var(--r-sm);padding:10px 10px 10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--shadow);font-weight:500}
 .toast-record{background:var(--record);color:var(--record-ink)}
 .toast .btn{background:transparent;border-color:currentColor;color:inherit;flex:none}
-.txt[readonly]{font-size:14px}
+/* ===== Ajustes para el celular (versión 2026-10-16) ===== */
+html{touch-action:manipulation;scroll-padding-bottom:calc(var(--tab-h) + var(--timer-h) + env(safe-area-inset-bottom,0px) + 16px)}
+.mini select,.txt,select,textarea{font-size:16px}           /* con menos de 16 px el iPhone hace zoom al tocar */
+.btn.small,.btn.link{min-height:44px}
+.icon-btn{width:44px;height:44px}
+.mini-step{grid-template-columns:44px 40px 44px}
+.mini-step button{height:44px}
+.mini select{min-height:44px}
+.chip,.seg-btn{min-height:44px}
+.acts,.timer-btns{gap:10px}
+.acts .sep{width:12px}
+.toast{pointer-events:none}
+.toast .btn{pointer-events:auto}
+.prev{white-space:normal;line-height:1.15;text-overflow:clip}
+@media (max-width:374px){.srow{grid-template-columns:24px minmax(0,1fr) 64px 52px 44px;gap:4px}.check{width:100%}}
+.sheet-wrap{top:var(--vvt,0px);bottom:auto;height:var(--vvh,100%)}
+.sheet-body{overscroll-behavior:contain}
+textarea.txt{min-height:64px;padding:10px 12px;resize:vertical;font-family:var(--font-body);line-height:1.35}
+.fecha-row{display:grid;gap:6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.elegir button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.nueva{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.resumen .kpi-v{font-size:28px}
+.resumen .sube{color:var(--ok);font-weight:700}
+.resumen .baja{color:var(--warn);font-weight:700}
+.ej-lista li>span:first-child{min-width:0}
+.musculos{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.mus{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:10px;align-items:center}
+.mus-n{font-weight:600;font-size:15px}
+.mus-bar{position:relative;height:12px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.mus-bar i{position:absolute;inset:0 auto 0 0;background:var(--accent);border-radius:99px}
+.mus-bar b{position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--ink-3);opacity:.6}
+.mus-v{font-size:17px;white-space:nowrap}
+@keyframes timerAviso{0%,100%{background:var(--surface)}50%{background:var(--ok-soft)}}
+.timer.listo{animation:timerAviso .5s ease-in-out 6}
+.txt[readonly]{font-size:16px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -260,6 +294,7 @@ input,select{font:inherit;color:var(--ink)}
 <div class="app">
   <header class="top" id="top"></header>
   <div class="aviso" id="aviso" role="status" hidden></div>
+  <div class="nueva" id="nueva-version" role="status" hidden><span>Hay una versión nueva de la app.</span><button class="btn small primary" data-action="actualizar">Actualizar</button></div>
   <main id="vista"><p class="muted cargando">Cargando tu bitácora…</p></main>
 </div>
 
@@ -288,7 +323,8 @@ input,select{font:inherit;color:var(--ink)}
 'use strict';
 
 /* ================= Constantes ================= */
-const DEFAULTS = { metaSemanal: 4, descansoSeg: 180, barraKg: 20, discos: [25, 20, 15, 10, 5, 2.5, 1.25] };
+const VERSION = '2026-10-16.1';
+const DEFAULTS = { metaSemanal: 4, descansoSeg: 180, barraKg: 20, discos: [25, 20, 15, 10, 5, 2.5, 1.25], pesoCorporal: 0, nombre: '', bienvenida: 0 };
 const TODOS_DISCOS = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_VAR = { 25: '--plate-25', 20: '--plate-20', 15: '--plate-15', 10: '--plate-10', 5: '--plate-5', 2.5: '--plate-2', 1.25: '--plate-1' };
 const PLATE_H = { 25: 46, 20: 42, 15: 36, 10: 30, 5: 24, 2.5: 19, 1.25: 15 };
@@ -411,7 +447,7 @@ function setPend(key, patch) {
 function finPend(key, gen, ok) {
   const cur = pend.get(key);
   if (!cur) return;
-  if (!ok) { pend.delete(key); bump(); render(); return; }
+  if (!ok) { pend.delete(key); bump(); renderFondo(); return; }
   if (cur.gen === gen) cur.confirmado = true;
 }
 function limpiarPend(prefijo) {
@@ -421,6 +457,10 @@ function limpiarPend(prefijo) {
 }
 const conPend = (col, id, base) => { const p = pend.get(col + '/' + id); return p ? { ...base, ...p.data } : base; };
 function guardarLuego(key, fn, ms) { clearTimeout(timers.get(key)); timers.set(key, setTimeout(() => { timers.delete(key); fn(); }, ms)); }
+/* Si la app pasa a segundo plano o se cierra, guardar al tiro lo que estaba esperando su turno. */
+function vaciarPendientes() { for (const key of [...timers.keys()]) { clearTimeout(timers.get(key)); timers.delete(key); escribirPend(key); } }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') vaciarPendientes(); });
+window.addEventListener('pagehide', vaciarPendientes);
 
 const colas = new Map();
 function enCola(path, fn) {
@@ -449,7 +489,7 @@ function errorEscritura(e) {
   else if (c === 'quota_exceeded') toast('Se llenó el espacio de la bitácora. Borra entrenamientos antiguos para seguir.');
   else if (c === 'resource_exhausted') toast('Muchas acciones seguidas. Espera unos segundos e intenta de nuevo.');
   else toast('No se pudo guardar. Revisa tu conexión e intenta de nuevo.');
-  render();
+  renderFondo();
 }
 async function escribirPend(key) {
   const p = pend.get(key);
@@ -471,14 +511,17 @@ function infoEj(id) {
   if (l) return { ...l, inc: defInc(l.tipo, l.musculo), propio: false };
   return { id, nombre: 'Ejercicio', tipo: 'maquina', musculo: 'otro', inc: 2.5, propio: false };
 }
-function itemDefault(ej) { const t = infoEj(ej).tipo; return { ej, series: DEF[t].series, reps: DEF[t].reps, descanso: DEF[t].descanso }; }
+/* descanso null = usar el «Descanso por defecto» de Ajustes (cardio no lleva descanso). */
+const descansoInicial = (t) => (t === 'cardio' ? 0 : null);
+function itemDefault(ej) { const t = infoEj(ej).tipo; return { ej, series: DEF[t].series, reps: DEF[t].reps, descanso: descansoInicial(t) }; }
 function normRutina(id, d) {
   const items = Array.isArray(d.items) ? d.items : (Array.isArray(d.ejercicios) ? d.ejercicios.map(itemDefault) : []);
   return {
-    id, nombre: d.nombre || 'Rutina', orden: d.orden || 0,
-    items: items.map((it) => { const t = infoEj(it.ej).tipo; return { ej: it.ej, series: it.series || DEF[t].series, reps: it.reps || DEF[t].reps, descanso: typeof it.descanso === 'number' ? it.descanso : DEF[t].descanso }; }),
+    id, nombre: d.nombre || 'Rutina', nombreCrudo: typeof d.nombre === 'string' ? d.nombre : 'Rutina', orden: d.orden || 0,
+    items: items.map((it) => { const t = infoEj(it.ej).tipo; return { ej: it.ej, series: it.series || DEF[t].series, reps: it.reps || DEF[t].reps, descanso: typeof it.descanso === 'number' ? it.descanso : descansoInicial(t) }; }),
   };
 }
+const descansoDe = (d) => (typeof d === 'number' ? d : S.ajustes.descansoSeg);
 function rutinaDe(id) { const raw = id && S.rutinasRaw.get(id); return raw ? normRutina(id, conPend('rutinas', id, raw)) : null; }
 function rutinasTodas() { return [...S.rutinasRaw.keys()].map(rutinaDe).filter(Boolean).sort((a, b) => a.orden - b.orden); }
 function planDias() {
@@ -498,7 +541,7 @@ function normSesion(id, d) {
   }
   return {
     id, fecha: d.fecha, inicio: d.inicio || '', fin: d.fin || null, estado: d.estado || 'terminada',
-    rutinaId: d.rutinaId || null, rutinaNombre: d.rutinaNombre || 'Entrenamiento',
+    rutinaId: d.rutinaId || null, rutinaNombre: d.rutinaNombre || 'Entrenamiento', editando: !!d.editando, creado: d.creado || null, nota: typeof d.nota === 'string' ? d.nota : '',
     items: items.map((it) => ({ ...it, meta: it.meta ?? null, descanso: it.descanso ?? null, series: Array.isArray(it.series) ? it.series : [] })),
   };
 }
@@ -508,6 +551,12 @@ function getSesiones() {
   return cacheSes;
 }
 const sesionActiva = () => getSesiones().find((s) => s.estado === 'en_curso') || null;
+/* Un entrenamiento que quedó abierto sin tocarse en 4 horas (por ejemplo, de ayer) no se muestra como si siguiera. */
+function ultimaActividad(s) {
+  const ts = s.items.flatMap((it) => it.series).filter((x) => x.hecho && x.t).map((x) => x.t).concat(s.creado ? [s.creado] : []).sort();
+  return ts.length ? ts[ts.length - 1] : s.inicio;
+}
+const esVieja = (s) => !!s && s.estado === 'en_curso' && !s.editando && Date.now() - (Date.parse(ultimaActividad(s)) || 0) > 4 * 3600e3;
 const hechasDe = (s) => s.items.reduce((n, it) => n + it.series.filter((x) => x.hecho).length, 0);
 const totalDe = (s) => s.items.reduce((n, it) => n + it.series.length, 0);
 
@@ -515,7 +564,11 @@ const totalDe = (s) => s.items.reduce((n, it) => n + it.series.length, 0);
 function metrica(info, x) {
   const p = Number(x.peso) || 0, r = Number(x.reps) || 0;
   if (info.tipo === 'barra' || info.tipo === 'mancuernas' || info.tipo === 'maquina') return e1rm(p, r);
-  if (info.tipo === 'corporal') return p > 0 ? e1rm(p, r) : r;
+  if (info.tipo === 'corporal') {
+    const pc = Number(S.ajustes.pesoCorporal) || 0;
+    if (pc > 0) return e1rm(pc + p, r); // con tu peso, una serie con lastre y una sin lastre se pueden comparar
+    return p > 0 ? e1rm(p, r) : r;
+  }
   if (info.tipo === 'tiempo') return r;
   return 0;
 }
@@ -531,11 +584,12 @@ function historial(ejId, excluir) {
   for (const s of getSesiones()) {
     if (s.id === excluir) continue;
     const sets = [];
-    for (const it of s.items) if (it.ej === ejId) for (const x of it.series) if (x.hecho) sets.push(x);
+    let nota = '';
+    for (const it of s.items) if (it.ej === ejId) { if (it.nota) nota = it.nota; for (const x of it.series) if (x.hecho) sets.push(x); }
     if (!sets.length) continue;
     let top = 0, best = 0, vol = 0;
     for (const x of sets) { top = Math.max(top, Number(x.peso) || 0); best = Math.max(best, metrica(info, x)); vol += (Number(x.peso) || 0) * (Number(x.reps) || 0); }
-    out.push({ sesionId: s.id, fecha: s.fecha, inicio: s.inicio, sets, top, best, vol });
+    out.push({ sesionId: s.id, fecha: s.fecha, inicio: s.inicio, sets, top, best, vol, nota });
   }
   return out.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : 0));
 }
@@ -568,12 +622,16 @@ function planInicial(item) {
   for (let i = 0; i < n; i++) {
     let peso;
     if (info.tipo === 'tiempo') peso = null;
-    else if (sug) peso = sug.peso;
+    else if (sug) {
+      // las series que la vez pasada fueron más livianas (calentamiento o pirámide) conservan su peso
+      const ref = ult && ult.sets[i], pr = ref ? Number(ref.peso) || 0 : ult.top;
+      peso = pr < ult.top ? Math.min(pr, sug.peso) : sug.peso;
+    }
     else if (ult) peso = Number((ult.sets[i] || ult.sets[ult.sets.length - 1]).peso) || 0;
     else peso = info.tipo === 'barra' ? S.ajustes.barraKg : (info.tipo === 'corporal' ? 0 : null);
     filas.push({ peso, reps: item.reps || DEF[info.tipo].reps, hecho: false });
   }
-  return { ej: item.ej, nombre: info.nombre, tipo: info.tipo, meta: item.reps || DEF[info.tipo].reps, descanso: typeof item.descanso === 'number' ? item.descanso : DEF[info.tipo].descanso, series: filas };
+  return { ej: item.ej, nombre: info.nombre, tipo: info.tipo, meta: item.reps || DEF[info.tipo].reps, descanso: typeof item.descanso === 'number' ? item.descanso : null, series: filas };
 }
 function mejorAntes(ejId, s, hastaK, hastaI) {
   const info = infoEj(ejId);
@@ -665,41 +723,61 @@ function mutarSesion(sid, fn, inmediato) {
   else guardarLuego(key, () => escribirPend(key), 700);
 }
 
-async function empezar(rid) {
-  if (sesionActiva()) { irA('hoy'); return; }
+async function empezar(rid, fechaPedida) {
+  if (sesionActiva()) { S.sheet = null; S.sheetDirty = true; irA('hoy'); return; }
+  const hoy = hoyISO(), fecha = /^\d{4}-\d{2}-\d{2}$/.test(fechaPedida || '') && fechaPedida < hoy ? fechaPedida : hoy;
   const r = rid ? rutinaDe(rid) : null, id = nuevoId('s');
   const body = {
-    fecha: hoyISO(), inicio: new Date().toISOString(), rutinaId: r ? r.id : null,
+    fecha, inicio: fecha === hoy ? new Date().toISOString() : dParse(fecha).toISOString(), creado: new Date().toISOString(), rutinaId: r ? r.id : null,
     rutinaNombre: r ? r.nombre : 'Entrenamiento libre', estado: 'en_curso', items: r ? r.items.map(planInicial) : [],
   };
   S.sesionesRaw = [{ id, ...body }, ...S.sesionesRaw]; bump();
-  S.tab = 'hoy'; S.vista = null; S.confirm = null; S.menuEj = null; S.sheet = null; S.sheetDirty = true;
-  render(); window.scrollTo({ top: 0 }); pedirWakeLock();
+  S.tab = 'hoy'; S.vista = null; S.confirm = null; S.menuEj = null; S.sheet = null; S.sheetDirty = true; S.resumen = null;
+  render(); window.scrollTo({ top: 0 });
+  if (fecha === hoy) pedirWakeLock();
   if (!r) abrirBiblioteca({ tipo: 'sesion' });
   const ok = await escribir('sesiones/' + id, () => S.db.doc('sesiones/' + id).set(body));
   if (!ok) { S.sesionesRaw = S.sesionesRaw.filter((x) => x.id !== id); bump(); render(); }
 }
 
-function marcarSerie(k, i) {
+function marcarSerie(k, i, forzar) {
   const s = sesionActiva();
   if (!s || !s.items[k] || !s.items[k].series[i]) return;
   const it = s.items[k], x = it.series[i], info = infoEj(it.ej);
+  let llevar = false;
   if (!x.hecho) {
     const reps = Number(x.reps), peso = x.peso === null || x.peso === undefined ? 0 : Number(x.peso);
     if (!(reps >= 1) || !(peso >= 0) || (CAMPOS[info.tipo].p && info.tipo !== 'corporal' && info.tipo !== 'cardio' && (x.peso === null || x.peso === undefined))) {
       toast(`Escribe ${CAMPOS[info.tipo].p ? 'el peso y ' : ''}${info.tipo === 'tiempo' ? 'los segundos' : info.tipo === 'cardio' ? 'los minutos' : 'las repeticiones'} antes de marcar.`);
       return;
     }
+    // un dedo que se resbala (450 en vez de 45) no debería quedar como récord para siempre
+    if (!forzar && ['barra', 'mancuernas', 'maquina'].includes(info.tipo)) {
+      const hoyHechas = s.items.filter((y) => y.ej === it.ej).flatMap((y) => y.series).filter((y) => y.hecho).map((y) => Number(y.peso) || 0);
+      const topPrev = Math.max(0, ...historial(it.ej, s.id).map((h) => h.top), ...hoyHechas);
+      if ((topPrev > 0 && peso > topPrev * 1.5 + 10) || reps > 30) {
+        toast(`¿Seguro que es ${fmtSet(info, { peso, reps })}? Revisa el peso y las reps.`, { label: 'Sí, marcar', fn: () => marcarSerie(k, i, true) });
+        return;
+      }
+    }
     const antes = mejorAntes(it.ej, s, k, i);
     mutarSesion(s.id, (items) => { const y = items[k].series[i]; y.hecho = true; y.t = new Date().toISOString(); if (y.peso === null || y.peso === undefined) y.peso = 0; }, true);
     const v = metrica(info, { peso, reps });
     if (info.tipo !== 'cardio' && antes > 0 && v > antes + 1e-9) toast(`¡Récord en ${info.nombre}! ${fmtSet(info, { peso, reps })}`, null, 'record');
-    const seg = typeof it.descanso === 'number' ? it.descanso : S.ajustes.descansoSeg;
-    if (seg > 0 && info.tipo !== 'cardio') iniciarDescanso(seg);
+    const seg = descansoDe(it.descanso);
+    if (seg > 0 && info.tipo !== 'cardio' && s.fecha === hoyISO() && !s.editando) iniciarDescanso(seg);
+    llevar = true;
   } else {
     mutarSesion(s.id, (items) => { items[k].series[i].hecho = false; }, true);
   }
   render();
+  if (llevar) mostrarSiguiente(k);
+}
+/* Después de marcar, deja a la vista la próxima serie pendiente (sin tapar con la barra del descanso). */
+function mostrarSiguiente(k) {
+  const fila = (n) => document.querySelector(`#ej-${n} .srow:not(.hecha):not(.shead)`);
+  const sig = fila(k) || fila(k + 1);
+  if (sig) try { sig.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { sig.scrollIntoView(); }
 }
 function cambiarCelda(k, i, campo, valor) {
   const s = sesionActiva();
@@ -725,13 +803,12 @@ function agregarSerie(k) {
   render();
 }
 function quitarSerie(k) {
-  const s = sesionActiva(); if (!s) return;
-  mutarSesion(s.id, (items) => {
-    const sers = items[k].series;
-    let j = -1;
-    for (let i = sers.length - 1; i >= 0; i--) if (!sers[i].hecho) { j = i; break; }
-    sers.splice(j >= 0 ? j : sers.length - 1, 1);
-  }, true);
+  const s = sesionActiva(); if (!s || !s.items[k]) return;
+  const sers = s.items[k].series;
+  let j = -1;
+  for (let i = sers.length - 1; i >= 0; i--) if (!sers[i].hecho) { j = i; break; }
+  if (j < 0) { toast('Todas las series están hechas. Desmarca una para quitarla.'); return; }
+  mutarSesion(s.id, (items) => { items[k].series.splice(j, 1); }, true);
   render();
 }
 function moverEjercicio(k, d) {
@@ -742,9 +819,42 @@ function moverEjercicio(k, d) {
   S.menuEj = null; render();
 }
 function quitarEjercicio(k) {
-  const s = sesionActiva(); if (!s) return;
-  mutarSesion(s.id, (items) => { items.splice(k, 1); }, true);
+  const s = sesionActiva(); if (!s || !s.items[k]) return;
+  const copia = clonar(s.items[k]), sid = s.id;
+  mutarSesion(sid, (items) => { items.splice(k, 1); }, true);
   S.menuEj = null; S.confirm = null; render();
+  toast(`Quitaste ${infoEj(copia.ej).nombre}.`, { label: 'Deshacer', fn: () => { mutarSesion(sid, (items) => { items.splice(Math.min(k, items.length), 0, copia); }, true); render(); } });
+}
+/* Datos de la sesión tal como están ahora (con lo que falta por guardar), sin el id. */
+function cuerpoSesion(id) {
+  const raw = S.sesionesRaw.find((x) => x.id === id);
+  if (!raw) return null;
+  const { id: _id, ...body } = conPend('sesiones', id, raw);
+  return clonar(body);
+}
+function armarResumen(s, items) {
+  const vivo = s.fecha === hoyISO() && !s.editando;
+  const dur = vivo && s.inicio ? Math.max(1, Math.round((Date.now() - Date.parse(s.inicio)) / 60000)) : null;
+  let vol = 0, series = 0;
+  const recs = new Set(), porEj = [];
+  s.items.forEach((it, k) => { if (marcasRecord(s, k).size) recs.add(infoEj(it.ej).nombre); });
+  for (const it of items) {
+    const info = infoEj(it.ej), pesas = ['barra', 'mancuernas', 'maquina'].includes(info.tipo);
+    series += it.series.length;
+    if (pesas) for (const x of it.series) vol += (Number(x.peso) || 0) * (Number(x.reps) || 0);
+    const mejor = it.series.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), it.series[0]);
+    const h = historial(it.ej, s.id).filter((x) => x.fecha <= s.fecha), ant = h[h.length - 1];
+    const enKg = pesas || (info.tipo === 'corporal' && Number(S.ajustes.pesoCorporal) > 0);
+    const delta = ant && ant.best > 0 && info.tipo !== 'cardio' ? metrica(info, mejor) - ant.best : null;
+    porEj.push({ nombre: info.nombre, mejor: fmtSet(info, mejor), delta, unidad: enKg ? 'kg' : info.tipo === 'tiempo' ? 's' : 'reps', fechaAnt: ant ? ant.fecha : null });
+  }
+  return { id: s.id, fecha: s.fecha, nombre: s.rutinaNombre, dur, vol: Math.round(vol), series, recs: [...recs], porEj };
+}
+function textoResumen(r) {
+  const lineas = [`💪 ${r.nombre} · ${fCorta(r.fecha)}`, `${r.series} series${r.dur ? ` · ${r.dur} min` : ''}${r.vol ? ` · ${kg(r.vol)} kg movidos` : ''}`];
+  for (const e of r.porEj) lineas.push(`• ${e.nombre}: ${e.mejor}${e.delta !== null && Math.abs(e.delta) >= 0.05 ? ` (${e.delta > 0 ? '+' : ''}${kg(e.delta)} ${e.unidad})` : ''}`);
+  if (r.recs.length) lineas.push(`🏆 Récords: ${r.recs.join(', ')}`);
+  return lineas.join('\n');
 }
 async function terminar() {
   const s = sesionActiva(); if (!s) return;
@@ -753,32 +863,64 @@ async function terminar() {
   let recs = 0;
   s.items.forEach((_, k) => { recs += marcasRecord(s, k).size; });
   const items = s.items.map((it) => ({ ...it, series: it.series.filter((x) => x.hecho) })).filter((it) => it.series.length);
+  const resumen = armarResumen(s, items), editando = s.editando;
   const key = 'sesiones/' + s.id;
   clearTimeout(timers.get(key)); timers.delete(key);
-  const gen = setPend(key, { items, estado: 'terminada' });
-  S.confirm = null; S.menuEj = null; S.timer = null; guardarLocal('bf-timer', null); tick(); soltarWakeLock();
+  const fin = s.fin || (s.fecha === hoyISO() ? new Date().toISOString() : s.inicio);
+  const cambios = { items, estado: 'terminada', fin, editando: false };
+  const gen = setPend(key, cambios);
+  S.confirm = null; S.menuEj = null; S.timer = null; guardarLocal('bf-timer', null); guardarLocal('bf-edicion', null); tick(); soltarWakeLock();
+  if (!editando && s.fecha === hoyISO()) { S.resumen = resumen; guardarLocal('bf-resumen', resumen); }
   render(); window.scrollTo({ top: 0 });
-  const fin = new Date().toISOString();
-  const ok = await escribir(key, () => S.db.doc(key).update({ items, estado: 'terminada', fin }));
+  const ok = await escribir(key, () => S.db.doc(key).update(cambios));
   finPend(key, gen, ok);
-  if (ok) toast(`Entrenamiento guardado: ${hechas} series${recs ? `, ${recs} ${recs === 1 ? 'récord' : 'récords'}` : ''}.`, null, recs ? 'record' : '');
+  if (!ok) return;
+  if (editando) { toast('Cambios guardados.'); return; }
+  const ultR = leerLocal('bf-ultimo-respaldo'), tocaResp = getSesiones().filter((x) => hechasDe(x)).length >= 2 && (!ultR || Date.now() - new Date(ultR).getTime() >= 7 * 86400000);
+  toast(`Entrenamiento guardado: ${hechas} ${hechas === 1 ? 'serie' : 'series'}${recs ? `, ${recs} ${recs === 1 ? 'récord' : 'récords'}` : ''}.`, tocaResp ? { label: 'Respaldar', fn: bajarRespaldo } : null, recs ? 'record' : '');
 }
 async function descartar() {
   const s = sesionActiva(); if (!s) return;
   const key = 'sesiones/' + s.id;
   clearTimeout(timers.get(key)); timers.delete(key); pend.delete(key);
-  S.sesionesRaw = S.sesionesRaw.filter((x) => x.id !== s.id); bump();
   S.confirm = null; S.menuEj = null; S.timer = null; guardarLocal('bf-timer', null); tick(); soltarWakeLock();
+  const ed = leerLocal('bf-edicion');
+  if (s.editando && ed && ed.id === s.id && ed.copia) {
+    // estabas corrigiendo un entrenamiento pasado: vuelve tal como estaba
+    S.sesionesRaw = S.sesionesRaw.map((x) => (x.id === s.id ? { id: s.id, ...ed.copia } : x)); bump();
+    guardarLocal('bf-edicion', null);
+    render();
+    await escribir(key, () => S.db.doc(key).set(ed.copia));
+    toast('Se descartaron los cambios.');
+    return;
+  }
+  S.sesionesRaw = S.sesionesRaw.filter((x) => x.id !== s.id); bump();
   render();
   await escribir(key, () => S.db.doc(key).delete());
 }
+/* Corregir un entrenamiento ya terminado: vuelve a abrirse con todas sus series marcadas. */
+async function editarSesion(id) {
+  if (sesionActiva()) { toast('Termina primero el entrenamiento que tienes abierto.'); return; }
+  const copia = cuerpoSesion(id); if (!copia) return;
+  guardarLocal('bf-edicion', { id, copia });
+  const key = 'sesiones/' + id, cambios = { estado: 'en_curso', editando: true };
+  setPend(key, cambios);
+  S.confirm = null; S.abierta = null; S.resumen = null;
+  irA('hoy');
+  await escribir(key, () => S.db.doc(key).update(cambios));
+}
 async function borrarSesion(id) {
-  const key = 'sesiones/' + id;
+  const key = 'sesiones/' + id, copia = cuerpoSesion(id);
   pend.delete(key);
   S.sesionesRaw = S.sesionesRaw.filter((x) => x.id !== id); bump();
   S.confirm = null; S.abierta = null;
+  if (S.resumen && S.resumen.id === id) { S.resumen = null; guardarLocal('bf-resumen', null); }
   render();
-  await escribir(key, () => S.db.doc(key).delete());
+  const ok = await escribir(key, () => S.db.doc(key).delete());
+  if (ok && copia) toast('Entrenamiento borrado.', { label: 'Deshacer', fn: async () => {
+    S.sesionesRaw = [{ id, ...copia }, ...S.sesionesRaw].sort((a, b) => (a.inicio < b.inicio ? 1 : -1)); bump(); render();
+    await escribir(key, () => S.db.doc(key).set(copia));
+  } });
 }
 
 /* ================= Acciones: semana y rutinas ================= */
@@ -819,11 +961,17 @@ function usarRutinaEnDia(rid, i) {
   else setDia(i, rid);
 }
 async function borrarRutina(rid) {
-  const dias = planDias().map((x) => (x === rid ? null : x));
+  const antes = planDias(), raw = S.rutinasRaw.get(rid), copia = raw ? clonar(conPend('rutinas', rid, raw)) : null;
+  const dias = antes.map((x) => (x === rid ? null : x));
   S.rutinasRaw.delete(rid); pend.delete('rutinas/' + rid); bump();
   S.confirm = null;
   guardarPlan(dias);
-  await escribir('rutinas/' + rid, () => S.db.doc('rutinas/' + rid).delete());
+  const ok = await escribir('rutinas/' + rid, () => S.db.doc('rutinas/' + rid).delete());
+  if (ok && copia) toast(`Borraste «${copia.nombre || 'Rutina'}».`, { label: 'Deshacer', fn: async () => {
+    S.rutinasRaw.set(rid, copia); bump();
+    guardarPlan(antes);
+    await escribir('rutinas/' + rid, () => S.db.doc('rutinas/' + rid).set(copia));
+  } });
 }
 async function crearEjercicio(nombre, musculo, tipo) {
   const id = nuevoId('e');
@@ -842,7 +990,7 @@ async function guardarAjustes(patch) {
 }
 
 /* ================= Hoja de biblioteca ================= */
-function abrirBiblioteca(ctx) { S.sheet = { tipo: 'biblioteca', ctx, sel: new Set(), musculo: 'todos', q: '', crear: false }; S.sheetDirty = true; render(); }
+function abrirBiblioteca(ctx, musculo) { S.sheet = { tipo: 'biblioteca', ctx, sel: new Set(), musculo: musculo || 'todos', q: '', crear: false }; S.sheetDirty = true; render(); }
 function idsEnContexto(ctx) {
   if (ctx.tipo === 'rutina') { const r = rutinaDe(ctx.rid); return r ? r.items.map((it) => it.ej) : []; }
   const s = sesionActiva(); return s ? s.items.map((it) => it.ej) : [];
@@ -872,23 +1020,41 @@ function actualizarListaLib() {
 }
 function actualizarBotonLib() {
   const b = $('#lib-ok'); if (!b || !S.sheet) return;
-  const n = S.sheet.sel.size;
-  b.disabled = !n;
-  b.textContent = n ? `Agregar (${n})` : 'Agregar';
+  b.disabled = !S.sheet.sel.size;
+  b.textContent = textoBotonLib(S.sheet);
 }
 function confirmarBiblioteca() {
   const sh = S.sheet; if (!sh || !sh.sel.size) return;
   const ids = [...sh.sel];
+  if (sh.ctx.tipo === 'cambiar') { cambiarEjercicio(sh.ctx.k, ids[0]); return; }
   if (sh.ctx.tipo === 'rutina') mutarRutina(sh.ctx.rid, (items) => { for (const id of ids) if (!items.some((it) => it.ej === id)) items.push(itemDefault(id)); });
   else { const s = sesionActiva(); if (s) mutarSesion(s.id, (items) => { for (const id of ids) if (!items.some((it) => it.ej === id)) items.push(planInicial(itemDefault(id))); }, true); }
   S.sheet = null; S.sheetDirty = true;
   render();
   toast(ids.length === 1 ? 'Ejercicio agregado.' : `${ids.length} ejercicios agregados.`);
 }
+/* Máquina ocupada: cambia un ejercicio por otro en plena sesión. Las series ya hechas se quedan con el original. */
+function cambiarEjercicio(k, nid) {
+  const s = sesionActiva(); if (!s || !s.items[k] || !nid) return;
+  const v = s.items[k], hechas = v.series.filter((x) => x.hecho), faltan = Math.max(1, v.series.length - hechas.length);
+  const nuevo = planInicial({ ...itemDefault(nid), series: faltan, reps: v.meta || itemDefault(nid).reps, descanso: v.descanso });
+  mutarSesion(s.id, (items) => {
+    if (hechas.length) { items[k] = { ...items[k], series: items[k].series.filter((x) => x.hecho) }; items.splice(k + 1, 0, nuevo); }
+    else items[k] = nuevo;
+  }, true);
+  S.sheet = null; S.sheetDirty = true; S.menuEj = null;
+  render();
+  toast(`Cambiado por ${infoEj(nid).nombre}.`);
+}
 
 /* ================= Descanso, sonido y pantalla encendida ================= */
 let actx = null, wakeLock = null;
-function prepararAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) { actx = null; } }
+function prepararAudio() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state !== 'running') { const p = actx.resume(); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) { actx = null; }
+}
 function pitido() {
   if (!actx) return;
   try {
@@ -902,9 +1068,28 @@ function pitido() {
   } catch (e) { /* sin sonido */ }
 }
 function vibrar() { try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) { /* sin vibración */ } }
-async function pedirWakeLock() { try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { wakeLock = null; } }
-function soltarWakeLock() { try { if (wakeLock) wakeLock.release(); } catch (e) { /* nada */ } wakeLock = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && sesionActiva()) pedirWakeLock(); });
+/* Pantalla encendida mientras entrenas: un solo pedido a la vez, y se suelta al terminar. */
+let pidiendoWL = null;
+function pedirWakeLock() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  if ((wakeLock && !wakeLock.released) || pidiendoWL) return;
+  pidiendoWL = navigator.wakeLock.request('screen')
+    .then((wl) => {
+      const s = sesionActiva();
+      if (!s || s.fecha !== hoyISO()) { wl.release().catch(() => {}); return; }
+      wakeLock = wl;
+      wl.addEventListener('release', () => { if (wakeLock === wl) wakeLock = null; });
+    })
+    .catch(() => { wakeLock = null; })
+    .finally(() => { pidiendoWL = null; });
+}
+function soltarWakeLock() { try { if (wakeLock) wakeLock.release().catch(() => {}); } catch (e) { /* nada */ } wakeLock = null; }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  revisarCambioDeDia();
+  revisarVersion();
+  if (sesionActiva()) pedirWakeLock();
+});
 
 function iniciarDescanso(seg) {
   S.timer = { end: Date.now() + seg * 1000, total: seg, avisado: false };
@@ -995,7 +1180,8 @@ function encabezado() {
   const est = n > meta ? ['extra', 'Semana extra'] : n === meta ? ['ok', 'Meta cumplida'] : n === meta - 1 ? ['casi', 'Te falta 1'] : ['falta', `Te faltan ${meta - n}`];
   const act = sesionActiva();
   const volver = act && (S.tab !== 'hoy' || S.vista) ? `<button class="volver" data-action="tab" data-tab="hoy"><span>Entrenando: ${esc(act.rutinaNombre)}</span><span aria-hidden="true">Volver →</span></button>` : '';
-  return `<div class="head-row"><span class="eyebrow">Bitácora de Fuerza</span><button class="icon-btn" data-action="ajustes" aria-label="Ajustes">⚙</button></div>
+  const nombre = String(S.ajustes.nombre || '').trim();
+  return `<div class="head-row"><span class="eyebrow">${nombre ? `Bitácora de ${esc(nombre)}` : 'Bitácora de Fuerza'}</span><button class="icon-btn" data-action="ajustes" aria-label="Ajustes">⚙</button></div>
     <div class="semana"><div class="sem-izq"><div class="sem-num"><span class="num big">${n}</span><span class="num de">/ ${meta}</span></div><span class="pill pill-${est[0]}">${est[1]}</span></div><ol class="dias" aria-label="Esta semana">${celdas}</ol></div>${volver}`;
 }
 
@@ -1011,21 +1197,43 @@ function resumenSesionHTML(s, titulo) {
     const mejor = hechas.reduce((b, x) => (metrica(info, x) > metrica(info, b) ? x : b), hechas[0]);
     return `<li><span>${esc(info.nombre)}</span><span class="num">${hechas.length} ${hechas.length === 1 ? 'serie' : 'series'} · mejor ${fmtSet(info, mejor)}</span></li>`;
   }).join('');
-  return `<article class="card"><header><span class="eyebrow">${esc(titulo)} · ${fCorta(s.fecha)}</span><h3>${esc(s.rutinaNombre)}</h3><p class="muted small">${hechasDe(s)} series</p></header><ul class="ej-lista">${filas}</ul></article>`;
+  return `<article class="card"><header><span class="eyebrow">${esc(titulo)} · ${fCorta(s.fecha)}</span><h3>${esc(s.rutinaNombre)}</h3><p class="muted small">${hechasDe(s)} ${hechasDe(s) === 1 ? 'serie' : 'series'}</p></header><ul class="ej-lista">${filas}</ul></article>`;
 }
 
+function tarjetaResumen(r) {
+  const filas = r.porEj.map((e) => {
+    const d = e.delta !== null && Math.abs(e.delta) >= 0.05 ? `<span class="${e.delta > 0 ? 'sube' : 'baja'}">${e.delta > 0 ? '+' : ''}${kg(e.delta)} ${e.unidad}</span>` : (e.fechaAnt ? '<span class="muted">igual</span>' : '<span class="muted">primera vez</span>');
+    return `<li><span>${esc(e.nombre)}<small class="muted"> · mejor ${esc(e.mejor)}</small></span><span class="num">${d}</span></li>`;
+  }).join('');
+  return `<article class="card destacada resumen"><header><span class="eyebrow">Entrenamiento terminado · ${fCorta(r.fecha)}</span><h3>${esc(r.nombre)}</h3></header>
+    <div class="kpis"><div class="kpi"><span class="eyebrow">Series</span><span class="num kpi-v">${r.series}</span></div><div class="kpi"><span class="eyebrow">Duración</span><span class="num kpi-v">${r.dur ? `${r.dur}<small> min</small>` : '—'}</span></div><div class="kpi"><span class="eyebrow">Récords</span><span class="num kpi-v${r.recs.length ? ' rec' : ''}">${r.recs.length}</span></div></div>
+    ${r.vol ? `<p class="small muted">Moviste <b class="num">${kg(r.vol)} kg</b> en total (peso × reps).</p>` : ''}
+    <p class="small muted">Comparado con tu mejor serie (1RM estimado) de la vez anterior:</p><ul class="ej-lista">${filas}</ul>
+    ${r.recs.length ? `<p class="small">🏆 Récords en: <b>${esc(r.recs.join(', '))}</b></p>` : ''}
+    <div class="row"><button class="btn" data-action="compartir-resumen">Compartir resumen</button><button class="btn link" data-action="cerrar-resumen">Cerrar</button></div></article>`;
+}
+function tarjetaSesionVieja(s) {
+  const n = hechasDe(s);
+  return `<article class="card destacada"><h3>Quedó abierto el entrenamiento del ${esc(fLarga(s.fecha))}</h3><p class="muted">${esc(s.rutinaNombre)} · ${n} ${n === 1 ? 'serie hecha' : 'series hechas'}. Ciérralo para empezar el de hoy.</p>
+    <div class="row">${n ? '<button class="btn primary" data-action="finish-ok">Guardarlo como está</button>' : ''}<button class="btn ghost" data-action="seguir-vieja">Seguir con ese</button><button class="btn link" data-action="discard-ok">Descartarlo</button></div></article>`;
+}
 function vistaHoy() {
   const s = sesionActiva();
-  if (s) return vistaSesion(s);
+  if (s && !(esVieja(s) && !S.seguirVieja)) return vistaSesion(s);
   const hoy = hoyISO(), idx = diaIdx(hoy), plan = planDias(), p = plan[idx], r = p && p !== 'descanso' ? rutinaDe(p) : null;
   const hechasHoy = getSesiones().filter((x) => x.fecha === hoy && x.estado !== 'en_curso' && hechasDe(x));
-  let h = `<section class="stack"><div class="section-head"><span class="eyebrow">Hoy</span><h2 class="cap">${esc(fLarga(hoy))}</h2></div>` + avisosApp();
+  let h = `<section class="stack"><div class="section-head"><span class="eyebrow">Hoy</span><h2 class="cap">${esc(fLarga(hoy))}</h2></div>`;
+  if (s) return h + tarjetaSesionVieja(s) + '</section>';
+  const res = S.resumen && S.resumen.fecha === hoy && getSesiones().some((x) => x.id === S.resumen.id) ? S.resumen : null;
+  if (res) h += tarjetaResumen(res);
+  h += avisosApp();
   const sinNada = plan.every((x) => !x) && !rutinasTodas().length;
   if (sinNada) {
-    h += `<article class="card destacada"><h3>Arma tu semana en 3 pasos</h3><ol class="pasos"><li>Ve a <b>Semana</b> y toca un día (por ejemplo, el lunes).</li><li>Ponle nombre («Pecho + Tríceps + Hombro») y elige los ejercicios de la biblioteca.</li><li>Ese día vuelve aquí y toca <b>Empezar</b>: las series aparecen listas y solo marcas ✓.</li></ol><div class="row"><button class="btn primary" data-action="tab" data-tab="semana">Armar mi semana</button><button class="btn ghost" data-action="start" data-rutina="">Entrenamiento libre</button></div></article>`;
+    h += `<article class="card destacada"><h3>Arma tu semana</h3><p class="muted">La forma rápida: elige una rutina lista y queda tu semana planificada. Después la cambias como quieras.</p><div class="row"><button class="btn primary" data-action="plantillas">Elegir una rutina lista</button></div>
+      <ol class="pasos"><li>O hazla a mano: ve a <b>Semana</b> y toca un día (por ejemplo, el lunes).</li><li>Ponle nombre («Pecho + Tríceps + Hombro») y elige los ejercicios de la biblioteca.</li><li>Ese día vuelve aquí y toca <b>Empezar</b>: las series aparecen listas y solo marcas ✓.</li></ol><div class="row"><button class="btn" data-action="tab" data-tab="semana">Armar mi semana</button><button class="btn ghost" data-action="start" data-rutina="">Entrenamiento libre</button></div></article>`;
   } else if (hechasHoy.length) {
-    h += `<article class="card destacada"><h3>✓ Hoy ya entrenaste</h3><p class="muted">Buen trabajo. Si quieres hacer algo más, elige qué.</p><button class="btn" data-action="elegir">Entrenar algo más</button></article>`;
-    h += resumenSesionHTML(hechasHoy[0], 'Hoy');
+    h += `<article class="card${res ? '' : ' destacada'}"><h3>✓ Hoy ya entrenaste</h3><p class="muted">Buen trabajo. Si quieres hacer algo más, elige qué.</p><button class="btn" data-action="elegir">Entrenar algo más</button></article>`;
+    if (!res) h += resumenSesionHTML(hechasHoy[0], 'Hoy');
   } else if (r) {
     h += `<article class="card destacada"><header><span class="eyebrow">Te toca hoy</span><h3>${esc(r.nombre)}</h3></header>${listaEjerciciosRutina(r)}<button class="btn primary big" data-action="start" data-rutina="${r.id}"${r.items.length ? '' : ' disabled'}>Empezar</button>${r.items.length ? '' : `<button class="btn link" data-action="abrir-dia" data-dia="${idx}">Agregar ejercicios a este día</button>`}<button class="btn link" data-action="elegir">Entrenar otra cosa</button></article>`;
   } else if (p === 'descanso') {
@@ -1073,35 +1281,46 @@ function tarjetaItem(s, it, k) {
   if (abierto) {
     menu = S.confirm === 'quitar-ej:' + k
       ? `<div class="menu-ej"><span class="small">¿Quitar ${esc(info.nombre)}? Se pierden sus ${hechas} series de hoy.</span><button class="btn small danger" data-action="quitar-ej-ok" data-k="${k}">Quitar</button><button class="btn small ghost" data-action="cancel">No</button></div>`
-      : `<div class="menu-ej"><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''}>↑ Subir</button><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="1"${k === s.items.length - 1 ? ' disabled' : ''}>↓ Bajar</button><button class="btn small" data-action="quitar-ej" data-k="${k}">Quitar ejercicio</button></div>`;
+      : `<div class="menu-ej"><button class="btn small" data-action="cambiar-ej" data-k="${k}">⇄ Cambiar por otro</button><button class="btn small" data-action="nota-ej" data-k="${k}">✎ Nota</button><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''}>↑ Subir</button><button class="btn small" data-action="mover-ej" data-k="${k}" data-d="1"${k === s.items.length - 1 ? ' disabled' : ''}>↓ Bajar</button><button class="btn small" data-action="quitar-ej" data-k="${k}">Quitar ejercicio</button></div>`;
   }
   const meta = it.meta ? ` · meta ${it.series.length} × ${it.meta}${info.tipo === 'tiempo' ? ' s' : info.tipo === 'cardio' ? ' min' : ''}` : '';
   const ayuda = sug ? `<p class="sug sug-${sug.tipo}">${esc(sug.texto)}</p>` : (!ult && info.tipo !== 'cardio' && info.tipo !== 'tiempo' ? '<p class="muted small">Primera vez: elige un peso que puedas mover con buena técnica. La próxima vez la app te dirá cuándo subir.</p>' : '');
+  const notaAnt = [...h].reverse().find((x) => x.nota);
+  const nota = (it.nota || S.notaAbierta === s.id + ':' + k)
+    ? `<label class="lbl" for="nota-${k}">Nota (ajuste de la máquina, cómo te sentiste…)</label><textarea class="txt nota" id="nota-${k}" data-nota="${k}" rows="2" maxlength="300" placeholder="Ej: asiento en 4, agarre ancho">${esc(it.nota || '')}</textarea>`
+    : '';
   return `<article class="card ej" id="ej-${k}">
     <header class="ej-head"><div><h3>${esc(info.nombre)}</h3><p class="muted small">${TIPOS[info.tipo]}${meta}</p></div><button class="icon-btn" data-action="menu-ej" data-k="${k}" aria-expanded="${abierto}" aria-label="Opciones de ${esc(info.nombre)}">⋯</button></header>
-    ${menu}${ayuda}
+    ${menu}${notaAnt && !it.nota ? `<p class="small muted">La vez anterior anotaste: «${esc(notaAnt.nota)}»</p>` : ''}${ayuda}${nota}
     <div class="series" role="table" aria-label="Series de ${esc(info.nombre)}">
       <div class="srow shead" role="row"><span role="columnheader">#</span><span role="columnheader">Anterior</span><span role="columnheader">${c.p || ''}</span><span role="columnheader">${c.r}</span><span role="columnheader"><span class="sr">Hecha</span>✓</span></div>
       ${it.series.map((x, i) => filaSerie(it, k, x, i, info, ult, recs.has(i))).join('')}
     </div>
-    <div class="row between"><button class="btn link small" data-action="agregar-serie" data-k="${k}">+ Agregar serie</button>${it.series.length > 1 ? `<button class="btn link small" data-action="quitar-serie" data-k="${k}">− Quitar una</button>` : ''}</div>
+    <div class="row between"><button class="btn link small" data-action="agregar-serie" data-k="${k}">+ Agregar serie</button>${it.series.length > 1 && it.series.some((x) => !x.hecho) ? `<button class="btn link small" data-action="quitar-serie" data-k="${k}">− Quitar una</button>` : ''}</div>
     ${info.tipo === 'barra' ? `<div class="discos" id="discos-${k}">${htmlDiscos(s, k)}</div>` : ''}
   </article>`;
 }
 
 function vistaSesion(s) {
   const hechas = hechasDe(s), total = totalDe(s);
-  let h = `<section class="stack"><header class="sesion-head"><div><span class="eyebrow">Entrenando · <span id="dur">0 min</span></span><h2>${esc(s.rutinaNombre)}</h2></div><p class="sesion-prog"><span class="num">${hechas}</span> / <span class="num">${total}</span> series</p></header>`;
+  const pasado = s.fecha !== hoyISO();
+  const etiqueta = s.editando ? `Corrigiendo · ${esc(fCorta(s.fecha))}` : pasado ? `Registrando · ${esc(fCorta(s.fecha))}` : 'Entrenando · <span id="dur">0 min</span>';
+  let h = `<section class="stack"><header class="sesion-head"><div><span class="eyebrow">${etiqueta}</span><h2>${esc(s.rutinaNombre)}</h2></div><p class="sesion-prog"><span class="num">${hechas}</span> / <span class="num">${total}</span> series</p></header>`;
+  if (s.editando) h += '<p class="aviso">Estás corrigiendo un entrenamiento ya guardado: cambia pesos o reps, desmarca lo que no hiciste y toca «Guardar cambios».</p>';
   if (!s.items.length) h += '<article class="card"><p class="muted">Todavía no hay ejercicios en este entrenamiento.</p></article>';
   h += s.items.map((it, k) => tarjetaItem(s, it, k)).join('');
   h += '<button class="btn big" data-action="abrir-biblioteca" data-ctx="sesion">+ Agregar ejercicio</button>';
   if (S.confirm === 'finish') {
     const faltan = total - hechas;
-    h += `<div class="fin card"><p>${faltan ? `Te quedan ${faltan} series sin marcar: no se guardan. ` : ''}¿Terminar y guardar?</p><div class="row"><button class="btn primary" data-action="finish-ok">Sí, terminar</button><button class="btn ghost" data-action="cancel">Seguir entrenando</button></div></div>`;
+    h += `<div class="fin card"><p>${faltan ? `Te quedan ${faltan} series sin marcar: no se guardan. ` : ''}${s.editando ? '¿Guardar los cambios?' : '¿Terminar y guardar?'}</p><div class="row"><button class="btn primary" data-action="finish-ok">${s.editando ? 'Sí, guardar' : 'Sí, terminar'}</button><button class="btn ghost" data-action="cancel">${s.editando ? 'Seguir corrigiendo' : 'Seguir entrenando'}</button></div></div>`;
   } else if (S.confirm === 'discard') {
-    h += `<div class="fin card"><p>Se borrará este entrenamiento${hechas ? ` y sus ${hechas} series hechas` : ''}.</p><div class="row"><button class="btn danger" data-action="discard-ok">Borrar entrenamiento</button><button class="btn ghost" data-action="cancel">Cancelar</button></div></div>`;
+    h += s.editando
+      ? '<div class="fin card"><p>El entrenamiento vuelve a quedar como estaba antes de corregirlo.</p><div class="row"><button class="btn danger" data-action="discard-ok">Descartar cambios</button><button class="btn ghost" data-action="cancel">Seguir corrigiendo</button></div></div>'
+      : `<div class="fin card"><p>Se borrará este entrenamiento${hechas ? ` y sus ${hechas} series hechas` : ''}.</p><div class="row"><button class="btn danger" data-action="discard-ok">Borrar entrenamiento</button><button class="btn ghost" data-action="cancel">Cancelar</button></div></div>`;
   } else {
-    h += '<div class="fin"><button class="btn primary big" data-action="finish">Terminar entrenamiento</button><button class="btn link" data-action="discard">Descartar este entrenamiento</button></div>';
+    h += s.editando
+      ? '<div class="fin"><button class="btn primary big" data-action="finish">Guardar cambios</button><button class="btn link" data-action="discard">Descartar cambios</button></div>'
+      : '<div class="fin"><button class="btn primary big" data-action="finish">Terminar entrenamiento</button><button class="btn link" data-action="discard">Descartar este entrenamiento</button></div>';
   }
   return h + '</section>';
 }
@@ -1110,12 +1329,13 @@ function miniStep(rid, k, campo, v) {
   return `<span class="mini-step"><button data-action="item-paso" data-id="${rid}" data-k="${k}" data-campo="${campo}" data-d="-1" aria-label="Menos">−</button><span class="num">${v}</span><button data-action="item-paso" data-id="${rid}" data-k="${k}" data-campo="${campo}" data-d="1" aria-label="Más">+</button></span>`;
 }
 function itemEditor(r, it, k) {
-  const info = infoEj(it.ej), ops = DESCANSOS.includes(it.descanso) ? DESCANSOS : [...DESCANSOS, it.descanso].sort((a, b) => a - b);
+  const info = infoEj(it.ej), propio = typeof it.descanso === 'number';
+  const ops = !propio || DESCANSOS.includes(it.descanso) ? DESCANSOS : [...DESCANSOS, it.descanso].sort((a, b) => a - b);
   const etiqueta = info.tipo === 'tiempo' ? 'Seg' : info.tipo === 'cardio' ? 'Min' : 'Reps';
   return `<li class="item"><div class="item-top"><b>${esc(info.nombre)}</b><span class="tag">${TIPOS[info.tipo]}</span></div>
     <div class="cfg"><span class="mini">Series ${miniStep(r.id, k, 'series', it.series)}</span><span class="mini">${etiqueta} ${miniStep(r.id, k, 'reps', it.reps)}</span>
-    <label class="mini">Descanso <select data-cfg="descanso" data-id="${r.id}" data-k="${k}">${ops.map((v) => `<option value="${v}"${v === it.descanso ? ' selected' : ''}>${v ? mmss(v) : 'sin'}</option>`).join('')}</select></label></div>
-    <div class="acts"><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''} aria-label="Subir ${esc(info.nombre)}">↑</button><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="1"${k === r.items.length - 1 ? ' disabled' : ''} aria-label="Bajar ${esc(info.nombre)}">↓</button><button class="icon-btn" data-action="item-quitar" data-id="${r.id}" data-k="${k}" aria-label="Quitar ${esc(info.nombre)}">✕</button></div></li>`;
+    <label class="mini">Descanso <select id="desc-${r.id}-${k}" data-cfg="descanso" data-id="${r.id}" data-k="${k}"><option value=""${propio ? '' : ' selected'}>Normal (${mmss(S.ajustes.descansoSeg)})</option>${ops.map((v) => `<option value="${v}"${propio && v === it.descanso ? ' selected' : ''}>${v ? mmss(v) : 'sin'}</option>`).join('')}</select></label></div>
+    <div class="acts"><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="-1"${k === 0 ? ' disabled' : ''} aria-label="Subir ${esc(info.nombre)}">↑</button><button class="icon-btn" data-action="item-mover" data-id="${r.id}" data-k="${k}" data-d="1"${k === r.items.length - 1 ? ' disabled' : ''} aria-label="Bajar ${esc(info.nombre)}">↓</button><span class="sep" aria-hidden="true"></span><button class="icon-btn" data-action="item-quitar" data-id="${r.id}" data-k="${k}" aria-label="Quitar ${esc(info.nombre)}">✕</button></div></li>`;
 }
 
 function vistaDia(i) {
@@ -1131,7 +1351,7 @@ function vistaDia(i) {
     }
     h += '</article>';
   } else {
-    h += `<article class="card"><label class="lbl" for="rn-${r.id}">Nombre del entrenamiento</label><input class="txt" id="rn-${r.id}" data-rname="${r.id}" maxlength="60" autocomplete="off" value="${esc(r.nombre)}">`;
+    h += `<article class="card"><label class="lbl" for="rn-${r.id}">Nombre del entrenamiento</label><input class="txt" id="rn-${r.id}" data-rname="${r.id}" maxlength="60" autocomplete="off" enterkeyhint="done" placeholder="Ej: Pecho + Tríceps" value="${esc(r.nombreCrudo)}">`;
     h += r.items.length ? `<ol class="items">${r.items.map((it, k) => itemEditor(r, it, k)).join('')}</ol>` : '<p class="muted">Todavía no tiene ejercicios. Agrégalos desde la biblioteca.</p>';
     h += `<button class="btn primary" data-action="abrir-biblioteca" data-ctx="rutina" data-id="${r.id}">+ Agregar ejercicios</button>${r.items.length ? `<button class="btn link" data-action="compartir-rutina" data-id="${r.id}">Compartir esta rutina con un amigo</button>` : ''}</article>`;
     if (esHoy && !sesionActiva() && r.items.length) h += `<button class="btn primary big" data-action="start" data-rutina="${r.id}">Empezar ahora</button>`;
@@ -1171,12 +1391,14 @@ function vistaProgreso() {
   const hoy = hoyISO(), desde30 = sumarDias(hoy, -29);
   const dias30 = new Set(con.filter((s) => s.fecha >= desde30).map((s) => s.fecha)).size, rec30 = contarRecords(desde30), semanas = conteoSemanas(8);
   h += `<div class="kpis"><div class="kpi"><span class="eyebrow">Esta semana</span><span class="num kpi-v">${semanas[semanas.length - 1].dias}<small> / ${meta}</small></span></div><div class="kpi"><span class="eyebrow">Días en 30 días</span><span class="num kpi-v">${dias30}</span></div><div class="kpi"><span class="eyebrow">Récords en 30 días</span><span class="num kpi-v${rec30 ? ' rec' : ''}">${rec30}</span></div></div>`;
-  h += `<article class="card"><header><h3>Días por semana</h3><p class="muted small">Últimas 8 semanas. Meta: ${meta}; con ${meta - 1} también vas bien.</p></header><div class="chart">${svgSemanas(semanas, meta)}</div><p class="leyenda small"><span><span class="lg lg-ok"></span>Meta cumplida</span><span><span class="lg lg-casi"></span>A uno de la meta</span><span><span class="lg lg-bajo"></span>Menos</span></p></article>`;
+  const racha = rachaSemanas(meta);
+  h += `<article class="card"><header><h3>Días por semana</h3><p class="muted small">Últimas 8 semanas. Meta: ${meta}; con ${meta - 1} también vas bien.${racha > 1 ? ` <b>Llevas ${racha} semanas seguidas cumpliendo.</b>` : ''}</p></header><div class="chart">${svgSemanas(semanas, meta)}</div><p class="leyenda small"><span><span class="lg lg-ok"></span>Meta cumplida</span><span><span class="lg lg-casi"></span>A uno de la meta</span><span><span class="lg lg-bajo"></span>Menos</span></p></article>`;
+  h += tarjetaMusculos();
   const ejs = ejerciciosConHistorial().filter((e) => e.tipo !== 'cardio');
   if (ejs.length) {
     if (!S.progEj || !ejs.some((e) => e.id === S.progEj)) S.progEj = ejs[0].id;
     const sel = infoEj(S.progEj), hist = historial(sel.id), pts = hist.slice(-24).map((x) => ({ fecha: x.fecha, v: x.best }));
-    const pesas = ['barra', 'mancuernas', 'maquina'].includes(sel.tipo);
+    const pesas = ['barra', 'mancuernas', 'maquina'].includes(sel.tipo) || (sel.tipo === 'corporal' && Number(S.ajustes.pesoCorporal) > 0);
     const unidad = pesas ? 'kg' : sel.tipo === 'tiempo' ? 's' : 'reps';
     let mejor = null;
     for (const x of hist) for (const st of x.sets) { const v = metrica(sel, st); if (!mejor || v > mejor.v) mejor = { v, st, fecha: x.fecha }; }
@@ -1195,14 +1417,43 @@ function vistaProgreso() {
   h += `<article class="card"><header><h3>Historial</h3><p class="muted small">Toca un entrenamiento para ver sus series.</p></header><ul class="historial">${con.slice(0, 20).map(itemHistorial).join('')}</ul></article>`;
   return h + '</section>';
 }
+/* Semanas seguidas (contando hacia atrás desde la pasada, más la actual si ya cumplió) con la meta cumplida. */
+function rachaSemanas(meta) {
+  const sem = conteoSemanas(52);
+  let n = sem[sem.length - 1].dias >= meta ? 1 : 0;
+  for (let i = sem.length - 2; i >= 0 && sem[i].dias >= meta; i--) n++;
+  return n;
+}
+function seriesPorMusculo(desde, hasta) {
+  const m = new Map();
+  for (const s of getSesiones()) {
+    if (s.fecha < desde || s.fecha > hasta) continue;
+    for (const it of s.items) {
+      const mu = infoEj(it.ej).musculo;
+      if (mu === 'cardio') continue;
+      const n = it.series.filter((x) => x.hecho).length;
+      if (n) m.set(mu, (m.get(mu) || 0) + n);
+    }
+  }
+  return m;
+}
+function tarjetaMusculos() {
+  const hoy = hoyISO(), lunes = lunesDe(hoy), ahora = seriesPorMusculo(lunes, hoy), antes = seriesPorMusculo(sumarDias(lunes, -7), sumarDias(lunes, -1));
+  const filas = MUSCULOS.filter(([v]) => v !== 'cardio' && (ahora.get(v) || antes.get(v))).map(([v, n]) => {
+    const a = ahora.get(v) || 0, b = antes.get(v) || 0, pct = Math.min(100, (a / 20) * 100);
+    return `<li class="mus"><span class="mus-n">${n}</span><span class="mus-bar" aria-hidden="true"><i style="width:${pct}%"></i><b></b></span><span class="num mus-v">${a}<small class="muted"> · antes ${b}</small></span></li>`;
+  }).join('');
+  if (!filas) return '';
+  return `<article class="card"><header><h3>Series por músculo</h3><p class="muted small">Esta semana, comparado con la semana pasada. Para ganar músculo suele recomendarse entre 10 y 20 series por músculo a la semana (la marca está en 10).</p></header><ul class="musculos">${filas}</ul></article>`;
+}
 function itemHistorial(s) {
   const abierta = S.abierta === s.id, conf = S.confirm === 'del-sesion:' + s.id;
   let det = '';
   if (abierta) {
     det = `<ul class="ej-lista">${s.items.map((it) => { const info = infoEj(it.ej), hs = it.series.filter((x) => x.hecho); return hs.length ? `<li><span>${esc(info.nombre)}</span><span class="num">${hs.map((x) => fmtSet(info, x)).join(' · ')}</span></li>` : ''; }).join('')}</ul>`;
-    det += conf ? `<div class="row"><span class="small muted">¿Borrar este entrenamiento?</span><button class="btn small danger" data-action="del-sesion-ok" data-id="${s.id}">Borrar</button><button class="btn small ghost" data-action="cancel">No</button></div>` : `<button class="btn link small" data-action="del-sesion" data-id="${s.id}">Borrar entrenamiento</button>`;
+    det += conf ? `<div class="row"><span class="small muted">¿Borrar este entrenamiento?</span><button class="btn small danger" data-action="del-sesion-ok" data-id="${s.id}">Borrar</button><button class="btn small ghost" data-action="cancel">No</button></div>` : `<div class="row between">${s.estado === 'en_curso' ? '' : `<button class="btn small" data-action="editar-sesion" data-id="${s.id}">✎ Corregir</button>`}<button class="btn link small" data-action="del-sesion" data-id="${s.id}">Borrar entrenamiento</button></div>`;
   }
-  return `<li class="hist"><div class="hist-top"><button class="hist-btn" data-action="abrir-hist" data-id="${s.id}" aria-expanded="${abierta}"><b>${esc(s.rutinaNombre)}</b><span class="small muted">${fCorta(s.fecha)} · ${hechasDe(s)} series${s.estado === 'en_curso' ? ' · en curso' : ''}</span></button><span class="chev" aria-hidden="true">${abierta ? '⌄' : '›'}</span></div>${det}</li>`;
+  return `<li class="hist"><div class="hist-top"><button class="hist-btn" data-action="abrir-hist" data-id="${s.id}" aria-expanded="${abierta}"><b>${esc(s.rutinaNombre)}</b><span class="small muted">${fCorta(s.fecha)} · ${hechasDe(s)} ${hechasDe(s) === 1 ? 'serie' : 'series'}${s.estado === 'en_curso' ? ' · en curso' : ''}${s.items.some((it) => it.nota) ? ' · ✎' : ''}</span></button><span class="chev" aria-hidden="true">${abierta ? '⌄' : '›'}</span></div>${det}</li>`;
 }
 
 function vistaAjustes() {
@@ -1210,6 +1461,11 @@ function vistaAjustes() {
   const disp = Array.isArray(a.discos) ? a.discos : DEFAULTS.discos;
   const propios = [...S.ejercicios.keys()].map(infoEj).sort(porNombre);
   return `<section class="stack"><button class="btn link" data-action="volver">← Volver</button><div class="section-head"><h2>Ajustes</h2></div>
+    <article class="card"><header><h3>Tu perfil</h3><p class="muted small">Tu nombre aparece arriba, en tus respaldos y en las rutinas que compartes. El peso corporal hace que las dominadas, fondos y flexiones con o sin lastre se puedan comparar.</p></header>
+      <div class="ajuste"><label class="lbl" for="perfil-nombre">Nombre</label><input class="txt" id="perfil-nombre" data-perfil="nombre" maxlength="30" autocomplete="given-name" enterkeyhint="done" placeholder="Tu nombre" value="${esc(a.nombre || '')}"></div>
+      <div class="ajuste"><label class="lbl" for="perfil-peso">Peso corporal (kg)</label><input class="txt" id="perfil-peso" data-perfil="pesoCorporal" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="Ej: 72" value="${a.pesoCorporal ? fmtIn(a.pesoCorporal) : ''}"></div>
+      <button class="btn" data-action="plantillas">Agregar una rutina lista (Full body, Torso/Pierna…)</button>
+    </article>
     <article class="card">
       <div class="ajuste"><span>Meta de días por semana</span>${seg('metaSemanal', [3, 4, 5], (v) => v)}</div>
       <div class="ajuste"><span>Descanso por defecto (cada ejercicio puede tener el suyo)</span>${seg('descansoSeg', [90, 120, 180, 240], mmss)}</div>
@@ -1217,7 +1473,10 @@ function vistaAjustes() {
       <div class="ajuste"><span>Discos que hay en tu gimnasio (para calcular qué poner por lado)</span><div class="seg" role="group">${TODOS_DISCOS.map((d) => `<button class="seg-btn" data-action="disco" data-v="${d}" aria-pressed="${disp.includes(d)}">${kg(d)}</button>`).join('')}</div></div>
     </article>
     <article class="card"><header><h3>Tus ejercicios propios</h3><p class="muted small">Los que creaste tú. Los de la biblioteca están siempre disponibles.</p></header>${propios.length ? `<ul class="ej-lista">${propios.map((e) => `<li><span>${esc(e.nombre)}</span><span class="small muted">${MUSCULO_NOMBRE[e.musculo]} · ${TIPOS[e.tipo]}</span></li>`).join('')}</ul>` : '<p class="muted small">Todavía no creas ninguno.</p>'}</article>
-    ${tarjetaDatos()}</section>`;
+    <article class="card"><header><h3>Agregar una rutina que te mandaron</h3><p class="muted small">Si te llegó un link de rutina y se abrió en el navegador en vez de en la app, cópialo y pégalo aquí.</p></header>
+      <div class="picker"><div class="row"><input class="txt" id="pegar-link" type="url" inputmode="url" autocomplete="off" enterkeyhint="go" placeholder="Pega el link aquí" aria-label="Link de la rutina"><button class="btn" data-action="abrir-link-pegado">Abrir</button></div></div></article>
+    ${tarjetaDatos()}
+    <p class="muted small">Versión ${VERSION}</p></section>`;
 }
 
 function sheetHTML() {
@@ -1225,14 +1484,16 @@ function sheetHTML() {
   if (sh.tipo === 'importar') return sheetImportar(sh);
   if (sh.tipo === 'rutina-compartida') return sheetRutinaCompartida(sh);
   if (sh.tipo === 'link') return sheetLink(sh);
+  if (sh.tipo === 'plantillas' || sh.tipo === 'bienvenida') return sheetPlantillas(sh);
   if (sh.tipo === 'elegir') {
-    const plan = planDias(), todas = rutinasTodas();
+    const plan = planDias(), todas = rutinasTodas(), hoy = hoyISO();
     const conDia = plan.map((p, i) => (p && p !== 'descanso' ? { i, r: rutinaDe(p) } : null)).filter((x) => x && x.r);
     const sinDia = todas.filter((r) => !plan.includes(r.id));
     const boton = (r, extra) => `<li><button data-action="start" data-rutina="${r.id}"><b>${esc(r.nombre)}</b><small>${extra} · ${r.items.length} ${r.items.length === 1 ? 'ejercicio' : 'ejercicios'}</small></button></li>`;
     return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
       <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">¿Qué entrenas?</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
-      <div class="sheet-body"><ul class="elegir">${conDia.map((x) => boton(x.r, DIAS_LARGO[x.i])).join('')}${sinDia.map((r) => boton(r, 'Sin día')).join('')}<li><button data-action="start" data-rutina=""><b>Entrenamiento libre</b><small>Eliges los ejercicios sobre la marcha</small></button></li></ul></div>
+      <div class="sheet-body"><div class="fecha-row"><label class="lbl" for="fecha-entreno">Día del entrenamiento</label><input class="txt" type="date" id="fecha-entreno" max="${hoy}" value="${hoy}"><p class="muted small">Déjalo en hoy, o elige un día pasado para anotar un entrenamiento que no registraste.</p></div>
+      <ul class="elegir">${conDia.map((x) => boton(x.r, DIAS_LARGO[x.i])).join('')}${sinDia.map((r) => boton(r, 'Sin día')).join('')}<li><button data-action="start" data-rutina=""><b>Entrenamiento libre</b><small>Eliges los ejercicios sobre la marcha</small></button></li></ul></div>
     </section></div>`;
   }
   const chips = [['todos', 'Todos'], ...MUSCULOS, ['mios', 'Míos']];
@@ -1243,13 +1504,14 @@ function sheetHTML() {
         <div class="row"><button class="btn primary">Crear y seleccionar</button><button type="button" class="btn ghost" data-action="lib-volver">Volver a la lista</button></div></form>`
     : `<ul class="lib-lista" id="lib-lista">${listaLib(sh)}</ul>`;
   return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
-    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">Agregar ejercicios</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
-    ${sh.crear ? '' : `<input class="txt" id="lib-q" type="search" placeholder="Buscar: press, sentadilla, remo…" autocomplete="off" value="${esc(sh.q)}" aria-label="Buscar ejercicio">
+    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">${sh.ctx.tipo === 'cambiar' ? 'Cambiar por…' : 'Agregar ejercicios'}</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
+    ${sh.crear ? '' : `<input class="txt" id="lib-q" type="search" enterkeyhint="search" placeholder="Buscar: press, sentadilla, remo…" autocomplete="off" value="${esc(sh.q)}" aria-label="Buscar ejercicio">
     <div class="chips" role="group" aria-label="Filtrar por músculo">${chips.map(([v, n]) => `<button class="chip" data-action="lib-musculo" data-v="${v}" aria-pressed="${sh.musculo === v}">${n}</button>`).join('')}</div>`}
     <div class="sheet-body">${cuerpo}</div>
-    ${sh.crear ? '' : `<footer class="sheet-foot"><button class="btn link" data-action="lib-crear">+ Crear ejercicio propio</button><button class="btn primary" id="lib-ok" data-action="lib-agregar"${sh.sel.size ? '' : ' disabled'}>${sh.sel.size ? `Agregar (${sh.sel.size})` : 'Agregar'}</button></footer>`}
+    ${sh.crear ? '' : `<footer class="sheet-foot"><button class="btn link" data-action="lib-crear">+ Crear ejercicio propio</button><button class="btn primary" id="lib-ok" data-action="lib-agregar"${sh.sel.size ? '' : ' disabled'}>${textoBotonLib(sh)}</button></footer>`}
   </section></div>`;
 }
+function textoBotonLib(sh) { const n = sh.sel.size; return sh.ctx.tipo === 'cambiar' ? 'Cambiar' : n ? `Agregar (${n})` : 'Agregar'; }
 
 /* ================= Render ================= */
 function capturar() {
@@ -1259,10 +1521,68 @@ function capturar() {
   document.querySelectorAll('#vista [data-keep]').forEach((el) => { if (el.id) vals[el.id] = el.value; });
   return { foco, vals };
 }
+let refocando = false;
 function restaurar(k) {
-  for (const [id, v] of Object.entries(k.vals)) { const el = document.getElementById(id); if (el) el.value = v; }
-  if (k.foco) { const el = document.getElementById(k.foco); if (el && el !== document.activeElement) el.focus({ preventScroll: true }); }
+  for (const [id, v] of Object.entries(k.vals)) { const el = document.getElementById(id); if (el && el !== document.activeElement) el.value = v; }
+  if (k.foco) {
+    const el = document.getElementById(k.foco);
+    if (el && el !== document.activeElement) { refocando = true; try { el.focus({ preventScroll: true }); } finally { refocando = false; } }
+  }
 }
+/* ================= Actualizar la pantalla sin cerrar el teclado ================= */
+/* En vez de reemplazar todo con innerHTML, se compara el HTML nuevo con lo que hay y se cambia solo lo distinto.
+   El campo donde estás escribiendo nunca se reemplaza ni se le toca el valor, así el teclado no se cierra. */
+function mismoNodo(a, b) {
+  if (a.nodeType !== b.nodeType) return false;
+  if (a.nodeType !== 1) return true;
+  if (a.tagName !== b.tagName) return false;
+  if ((a.id || b.id) && a.id !== b.getAttribute('id')) return false;
+  if (a.tagName === 'INPUT' && a.type !== (b.getAttribute('type') || 'text')) return false;
+  return true;
+}
+function parcharHijos(a, b) {
+  const nuevos = Array.from(b.childNodes);
+  for (let i = 0; i < nuevos.length; i++) {
+    const nb = nuevos[i], na = a.childNodes[i];
+    if (!na) a.appendChild(nb);
+    else if (mismoNodo(na, nb)) parcharNodo(na, nb);
+    else a.replaceChild(nb, na);
+  }
+  while (a.childNodes.length > nuevos.length) a.removeChild(a.lastChild);
+}
+function parcharNodo(a, b) {
+  if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  for (const { name, value } of Array.from(b.attributes)) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  for (const { name } of Array.from(a.attributes)) if (!b.hasAttribute(name)) a.removeAttribute(name);
+  const enfocado = a === document.activeElement;
+  if (a.tagName === 'INPUT') {
+    if (!enfocado && a.type !== 'file') { const v = b.getAttribute('value') || ''; if (a.value !== v) a.value = v; }
+    return;
+  }
+  if (a.tagName === 'TEXTAREA') { if (!enfocado && a.value !== b.textContent) a.value = b.textContent; return; }
+  parcharHijos(a, b);
+  if (a.tagName === 'SELECT' && !enfocado) {
+    const sel = b.querySelector('option[selected]');
+    const v = sel ? sel.getAttribute('value') : (a.options[0] ? a.options[0].value : '');
+    if (v !== null && a.value !== v) a.value = v;
+  }
+}
+function morph(dest, html) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  parcharHijos(dest, t.content);
+}
+/* Los avisos que llegan solos (guardado, otra pestaña, instalar) se juntan en un render y esperan si estás escribiendo. */
+let renderEnCola = false, renderDiferido = false;
+const editando = () => { const a = document.activeElement; return !!(a && a.matches && a.matches('#vista input:not([type=file]), #vista textarea, #vista select')); };
+function renderFondo() {
+  if (renderEnCola) return;
+  renderEnCola = true;
+  setTimeout(() => { renderEnCola = false; if (editando()) { renderDiferido = true; return; } render(); }, 0);
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (renderDiferido && !editando()) render(); }, 300));
+let diaRender = null;
+function revisarCambioDeDia() { if (diaRender && hoyISO() !== diaRender && !editando()) render(); }
 function renderSheet() {
   const el = $('#sheet');
   if (!S.sheet) { el.hidden = true; el.innerHTML = ''; document.documentElement.classList.remove('lock'); return; }
@@ -1270,8 +1590,10 @@ function renderSheet() {
   const t = $('#sheet-t'); if (t) t.focus({ preventScroll: true });
 }
 function render() {
+  renderDiferido = false;
+  diaRender = hoyISO();
   const keep = capturar();
-  $('#top').innerHTML = encabezado();
+  morph($('#top'), encabezado());
   const aviso = $('#aviso');
   if (S.sinDb) { aviso.hidden = false; aviso.textContent = 'Este navegador no deja guardar datos (por ejemplo, en modo incógnito). Ábrela en una ventana normal para registrar tus series.'; }
   else if (S.soloLectura) { aviso.hidden = false; aviso.textContent = 'Estás viendo esta bitácora sin permiso para editarla.'; }
@@ -1284,7 +1606,11 @@ function render() {
   else if (S.tab === 'semana') html = vistaSemana();
   else if (S.tab === 'progreso') html = vistaProgreso();
   else html = vistaHoy();
-  $('#vista').innerHTML = html;
+  morph($('#vista'), html);
+  if (!cargando && S.cargado.config && !S.sinDb && !S.ajustes.bienvenida && !S.sheet && !S.bienvenidaVista) {
+    S.bienvenidaVista = true;
+    S.sheet = { tipo: 'bienvenida' }; S.sheetDirty = true;
+  }
   document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-current', t.dataset.tab === S.tab && !(S.vista && S.vista.tipo === 'ajustes') ? 'page' : 'false'));
   restaurar(keep);
   if (S.sheetDirty) { S.sheetDirty = false; renderSheet(); }
@@ -1297,18 +1623,34 @@ function irA(tab) {
   try { history.replaceState(null, '', '#' + tab); } catch (e) { /* sin historial */ }
   render(); window.scrollTo({ top: 0 });
 }
-function cerrarSheet() { S.sheet = null; S.sheetDirty = true; render(); }
+function cerrarSheet() {
+  const eraBienvenida = S.sheet && S.sheet.tipo === 'bienvenida';
+  S.sheet = null; S.sheetDirty = true;
+  if (eraBienvenida) guardarAjustes({ bienvenida: 1 }); else render();
+}
 
 /* ================= Eventos ================= */
 document.addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-action]');
   if (!b || b.disabled) return;
   const a = b.dataset.action, id = b.dataset.id, k = Number(b.dataset.k), i = Number(b.dataset.i);
+  if (sesionActiva()) prepararAudio(); // cualquier toque mientras entrenas deja listo el sonido del descanso
   switch (a) {
     case 'tab': irA(b.dataset.tab); break;
     case 'ajustes': S.vista = { tipo: 'ajustes' }; S.confirm = null; render(); window.scrollTo({ top: 0 }); break;
     case 'volver': S.vista = null; S.confirm = null; render(); window.scrollTo({ top: 0 }); break;
-    case 'start': prepararAudio(); empezar(b.dataset.rutina || null); break;
+    case 'start': { prepararAudio(); const f = $('#fecha-entreno'); empezar(b.dataset.rutina || null, f ? f.value : null); break; }
+    case 'seguir-vieja': S.seguirVieja = true; render(); break;
+    case 'cerrar-resumen': S.resumen = null; guardarLocal('bf-resumen', null); render(); break;
+    case 'compartir-resumen': compartirResumen(); break;
+    case 'editar-sesion': editarSesion(id); break;
+    case 'cambiar-ej': { const s = sesionActiva(); if (s && s.items[k]) abrirBiblioteca({ tipo: 'cambiar', k }, infoEj(s.items[k].ej).musculo); break; }
+    case 'nota-ej': { const s = sesionActiva(); if (!s) break; S.notaAbierta = s.id + ':' + k; S.menuEj = null; render(); const t = document.getElementById('nota-' + k); if (t) t.focus(); break; }
+    case 'plantillas': S.sheet = { tipo: 'plantillas' }; S.sheetDirty = true; render(); break;
+    case 'aplicar-plantilla': aplicarPlantilla(b.dataset.id); break;
+    case 'bienvenida-ok': terminarBienvenida(); break;
+    case 'abrir-link-pegado': abrirLinkPegado(); break;
+    case 'actualizar': vaciarPendientes(); setTimeout(() => location.reload(), 150); break;
     case 'elegir': S.sheet = { tipo: 'elegir' }; S.sheetDirty = true; render(); break;
     case 'cerrar-sheet': cerrarSheet(); break;
     case 'check': prepararAudio(); marcarSerie(k, i); break;
@@ -1327,7 +1669,13 @@ document.addEventListener('click', (ev) => {
     case 'timer-mas': if (S.timer) { S.timer.end = Math.max(S.timer.end, Date.now()) + 30000; S.timer.total += 30; S.timer.avisado = false; guardarLocal('bf-timer', S.timer); tick(); } break;
     case 'timer-fin': S.timer = null; guardarLocal('bf-timer', null); tick(); break;
     case 'abrir-dia': S.tab = 'semana'; S.vista = { tipo: 'dia', dia: Number(b.dataset.dia) }; S.confirm = null; render(); window.scrollTo({ top: 0 }); break;
-    case 'dia-entrenar': { const d = Number(b.dataset.dia); crearRutina(`Rutina del ${DIAS_LARGO[d].toLowerCase()}`, [], d); break; }
+    case 'dia-entrenar': {
+      const d = Number(b.dataset.dia);
+      crearRutina(`Rutina del ${DIAS_LARGO[d].toLowerCase()}`, [], d);
+      const inp = document.querySelector('#vista [data-rname]'); // listo para escribirle el nombre
+      if (inp) { inp.focus(); try { inp.setSelectionRange(0, inp.value.length); } catch (e) { /* nada */ } }
+      break;
+    }
     case 'dia-descanso': setDia(Number(b.dataset.dia), 'descanso'); S.confirm = null; break;
     case 'dia-limpiar': setDia(Number(b.dataset.dia), null); S.confirm = null; break;
     case 'quitar-dia': S.confirm = 'quitar-dia:' + b.dataset.dia; render(); break;
@@ -1346,9 +1694,22 @@ document.addEventListener('click', (ev) => {
       break;
     }
     case 'item-mover': { const d = Number(b.dataset.d); mutarRutina(id, (items) => { const j = k + d; if (j >= 0 && j < items.length) [items[k], items[j]] = [items[j], items[k]]; }); break; }
-    case 'item-quitar': mutarRutina(id, (items) => { items.splice(k, 1); }); break;
+    case 'item-quitar': {
+      const r = rutinaDe(id); if (!r || !r.items[k]) break;
+      const copia = clonar(r.items[k]);
+      mutarRutina(id, (items) => { items.splice(k, 1); });
+      toast(`Quitaste ${infoEj(copia.ej).nombre}.`, { label: 'Deshacer', fn: () => mutarRutina(id, (items) => { items.splice(Math.min(k, items.length), 0, copia); }) });
+      break;
+    }
     case 'abrir-biblioteca': abrirBiblioteca(b.dataset.ctx === 'rutina' ? { tipo: 'rutina', rid: id } : { tipo: 'sesion' }); break;
-    case 'lib-toggle': { const sh = S.sheet; if (!sh) break; if (sh.sel.has(id)) sh.sel.delete(id); else sh.sel.add(id); b.setAttribute('aria-pressed', String(sh.sel.has(id))); actualizarBotonLib(); break; }
+    case 'lib-toggle': {
+      const sh = S.sheet; if (!sh) break;
+      if (sh.ctx.tipo === 'cambiar') { // se elige uno solo
+        sh.sel = new Set([id]);
+        document.querySelectorAll('.lib-row[aria-pressed="true"]').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+      } else if (sh.sel.has(id)) sh.sel.delete(id); else sh.sel.add(id);
+      b.setAttribute('aria-pressed', String(sh.sel.has(id))); actualizarBotonLib(); break;
+    }
     case 'lib-musculo': if (S.sheet) { S.sheet.musculo = b.dataset.v; actualizarListaLib(); } break;
     case 'lib-crear': if (S.sheet) { S.sheet.crear = true; S.sheetDirty = true; render(); } break;
     case 'lib-volver': if (S.sheet) { S.sheet.crear = false; S.sheetDirty = true; render(); } break;
@@ -1370,6 +1731,12 @@ document.addEventListener('click', (ev) => {
     case 'rutina-ok': agregarRutinaCompartida(); break;
     case 'compartir-rutina': compartirRutina(id); break;
     case 'copiar-link': copiarLink(); break;
+    case 'copiar-link-rutina': {
+      const sh = S.sheet; if (!sh || !sh.rutina) break;
+      const url = linkBase() + '#r=' + sh.rutina.code;
+      try { navigator.clipboard.writeText(url).then(() => toast('Link copiado. Ahora abre la app y pégalo en Ajustes.'), () => toast('No se pudo copiar.')); } catch (e) { toast('No se pudo copiar.'); }
+      break;
+    }
     case 'instalar': instalarApp(); break;
     case 'ocultar-instalar': guardarLocal('bf-instalar-oculto', true); render(); break;
     case 'toast-accion': if (S.toast && S.toast.accion) { const fn = S.toast.accion.fn; ocultarToast(); fn(); } break;
@@ -1382,16 +1749,45 @@ document.addEventListener('input', (ev) => {
   if (!el.dataset) return;
   if (el.dataset.cell) cambiarCelda(Number(el.dataset.k), Number(el.dataset.i), el.dataset.cell, el.value);
   else if (el.dataset.rname) renombrarRutina(el.dataset.rname, el.value);
+  else if (el.dataset.nota !== undefined) { const s = sesionActiva(), k = Number(el.dataset.nota); if (s && s.items[k]) mutarSesion(s.id, (items) => { items[k].nota = el.value.slice(0, 300); }, false); }
   else if (el.id === 'lib-q' && S.sheet) { S.sheet.q = el.value; actualizarListaLib(); }
 });
 document.addEventListener('change', (ev) => {
   const el = ev.target;
   if (el.id === 'respaldo-archivo') { leerArchivoRespaldo(el); return; }
-  if (el.dataset && el.dataset.cfg === 'descanso') { const k = Number(el.dataset.k), v = Number(el.value); mutarRutina(el.dataset.id, (items) => { if (items[k]) items[k].descanso = v; }); }
-  else if (el.dataset && el.dataset.rname) render();
+  if (el.dataset && el.dataset.cfg === 'descanso') {
+    const k = Number(el.dataset.k), v = el.value === '' ? null : Number(el.value);
+    mutarRutina(el.dataset.id, (items) => { if (items[k]) items[k].descanso = v; });
+  } else if (el.dataset && el.dataset.rname) {
+    // al salir del campo: si quedó vacío vuelve a «Rutina», y se guarda al tiro
+    const key = 'rutinas/' + el.dataset.rname;
+    if (!el.value.trim()) { el.value = 'Rutina'; setPend(key, { nombre: 'Rutina' }); }
+    clearTimeout(timers.get(key)); timers.delete(key);
+    if (pend.has(key)) escribirPend(key);
+  } else if (el.dataset && el.dataset.perfil) {
+    const campo = el.dataset.perfil;
+    if (campo === 'nombre') guardarAjustes({ nombre: el.value.trim().slice(0, 30) });
+    else {
+      const v = numero(el.value);
+      if (v === null || v === 0) guardarAjustes({ pesoCorporal: 0 });
+      else if (v >= 30 && v <= 250) guardarAjustes({ pesoCorporal: Math.round(v * 10) / 10 });
+      else toast('Escribe tu peso en kilos, entre 30 y 250.');
+    }
+  }
 });
-document.addEventListener('focusin', (ev) => { const el = ev.target; if (el.classList && el.classList.contains('cell')) { try { el.select(); } catch (e) { /* nada */ } } });
-document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && S.sheet) cerrarSheet(); });
+document.addEventListener('focusin', (ev) => {
+  const el = ev.target;
+  if (refocando || !el.classList || !el.classList.contains('cell')) return;
+  // seleccionar todo al tocar, para escribir encima (solo cuando lo tocas tú, no al volver a enfocarlo la app)
+  setTimeout(() => { try { if (document.activeElement === el) el.select(); } catch (e) { /* nada */ } }, 0);
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && S.sheet) { cerrarSheet(); return; }
+  if (ev.key !== 'Enter') return;
+  const t = ev.target;
+  if (t.id === 'lib-q' || (t.dataset && (t.dataset.rname || t.dataset.perfil))) { ev.preventDefault(); t.blur(); }
+  else if (t.id === 'pegar-link') { ev.preventDefault(); abrirLinkPegado(); }
+});
 document.addEventListener('submit', async (ev) => {
   const f = ev.target;
   if (!f.dataset || !f.dataset.form) return;
@@ -1404,6 +1800,107 @@ document.addEventListener('submit', async (ev) => {
     if (id && S.sheet) { S.sheet.sel.add(id); S.sheet.crear = false; S.sheet.musculo = 'mios'; S.sheet.q = ''; S.sheetDirty = true; render(); toast('Ejercicio creado. Ahora toca «Agregar».'); }
   }
 });
+
+/* ================= Rutinas listas y bienvenida ================= */
+/* [ejercicio, series, reps, descanso en segundos (null = el de Ajustes)] */
+const PLANTILLAS = [
+  { id: 'fb3', nombre: 'Full body · 3 días', desc: 'Lunes, miércoles y viernes. Ideal para empezar o con poco tiempo.', meta: 3,
+    rutinas: [
+      { nombre: 'Full body A', items: [['l-sentadilla', 3, 5, 180], ['l-press-banca', 3, 5, 180], ['l-remo-barra', 3, 8, null], ['l-laterales', 3, 12, 60], ['l-plancha', 3, 30, 60]] },
+      { nombre: 'Full body B', items: [['l-peso-muerto-rumano', 3, 8, 180], ['l-press-militar', 3, 6, 180], ['l-jalon', 3, 10, null], ['l-press-inclinado-mancuernas', 3, 10, null], ['l-curl-mancuernas', 3, 12, 60]] },
+    ], dias: [0, 'descanso', 1, 'descanso', 0, 'descanso', 'descanso'] },
+  { id: 'tp4', nombre: 'Torso / Pierna · 4 días', desc: 'Lunes, martes, jueves y viernes. Equilibrado y fácil de seguir.', meta: 4,
+    rutinas: [
+      { nombre: 'Torso A', items: [['l-press-banca', 4, 5, 180], ['l-remo-barra', 4, 8, null], ['l-press-hombro-mancuernas', 3, 10, null], ['l-jalon', 3, 10, null], ['l-triceps-cuerda', 3, 12, 60], ['l-curl-barra', 3, 10, 60]] },
+      { nombre: 'Pierna A', items: [['l-sentadilla', 4, 5, 180], ['l-peso-muerto-rumano', 3, 8, 180], ['l-prensa', 3, 10, null], ['l-curl-femoral', 3, 12, null], ['l-gemelos-pie', 3, 12, 60]] },
+      { nombre: 'Torso B', items: [['l-press-inclinado-mancuernas', 4, 8, null], ['l-dominadas', 4, 6, null], ['l-press-militar', 3, 6, 180], ['l-remo-polea', 3, 10, null], ['l-laterales', 3, 12, 60], ['l-curl-martillo', 3, 12, 60]] },
+      { nombre: 'Pierna B', items: [['l-peso-muerto', 3, 5, 180], ['l-bulgara', 3, 10, null], ['l-extension-cuadriceps', 3, 12, null], ['l-hip-thrust', 3, 10, null], ['l-plancha', 3, 30, 60]] },
+    ], dias: [0, 1, 'descanso', 2, 3, 'descanso', 'descanso'] },
+  { id: 'ppl5', nombre: 'Empuje / Tirón / Pierna + Torso / Pierna · 5 días', desc: 'De lunes a sábado, con jueves libre. Para quien ya entrena seguido.', meta: 5,
+    rutinas: [
+      { nombre: 'Empuje', items: [['l-press-banca', 4, 5, 180], ['l-press-inclinado-mancuernas', 3, 10, null], ['l-press-militar', 3, 8, null], ['l-laterales', 3, 12, 60], ['l-triceps-cuerda', 3, 12, 60]] },
+      { nombre: 'Tirón', items: [['l-dominadas', 4, 6, null], ['l-remo-barra', 4, 8, null], ['l-jalon-cerrado', 3, 10, null], ['l-face-pull', 3, 15, 60], ['l-curl-barra', 3, 10, 60]] },
+      { nombre: 'Pierna', items: [['l-sentadilla', 4, 5, 180], ['l-peso-muerto-rumano', 3, 8, 180], ['l-prensa', 3, 10, null], ['l-curl-femoral', 3, 12, null], ['l-gemelos-pie', 3, 15, 60]] },
+      { nombre: 'Torso', items: [['l-press-mancuernas', 3, 10, null], ['l-remo-mancuerna', 3, 10, null], ['l-press-hombro-maquina', 3, 10, null], ['l-jalon', 3, 12, null], ['l-curl-martillo', 3, 12, 60]] },
+      { nombre: 'Pierna B', items: [['l-hip-thrust', 3, 10, null], ['l-bulgara', 3, 10, null], ['l-extension-cuadriceps', 3, 12, null], ['l-abductores', 3, 15, 60], ['l-plancha', 3, 30, 60]] },
+    ], dias: [0, 1, 2, 'descanso', 3, 4, 'descanso'] },
+];
+function aplicarPlantilla(pid, silencioso) {
+  const p = PLANTILLAS.find((x) => x.id === pid); if (!p) return;
+  if (S.sheet && S.sheet.tipo === 'bienvenida' && !silencioso) { // en la bienvenida solo se marca la elegida
+    S.sheet.pid = S.sheet.pid === pid ? null : pid;
+    document.querySelectorAll('[data-action="aplicar-plantilla"]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.id === S.sheet.pid)));
+    return;
+  }
+  const libre = planDias().every((x) => !x);
+  let orden = rutinasTodas().reduce((m, r) => Math.max(m, r.orden), 0);
+  const ids = p.rutinas.map((r) => {
+    const id = nuevoId('r'), body = { nombre: r.nombre, orden: ++orden, creado: new Date().toISOString(), items: r.items.map(([ej, series, reps, descanso]) => ({ ej, series, reps, descanso })) };
+    S.rutinasRaw.set(id, body);
+    escribir('rutinas/' + id, () => S.db.doc('rutinas/' + id).set(body));
+    return id;
+  });
+  bump();
+  S.sheet = null; S.sheetDirty = true;
+  if (libre) {
+    guardarPlan(p.dias.map((d) => (typeof d === 'number' ? ids[d] : d)));
+    guardarAjustes({ metaSemanal: Math.min(5, Math.max(3, p.meta)) });
+    irA('semana');
+    toast(`Listo: tu semana quedó con «${p.nombre}». Toca un día para cambiar lo que quieras.`);
+  } else {
+    irA('semana');
+    toast(`Se agregaron ${ids.length} rutinas en «Rutinas guardadas sin día». Asígnalas a los días que quieras.`);
+  }
+}
+function sheetPlantillas(sh) {
+  const bienvenida = sh.tipo === 'bienvenida', hayRutinas = rutinasTodas().length > 0;
+  const lista = `<ul class="elegir">${PLANTILLAS.map((p) => `<li><button data-action="aplicar-plantilla" data-id="${p.id}"${bienvenida ? ` aria-pressed="${sh.pid === p.id}"` : ''}><b>${esc(p.nombre)}</b><small>${esc(p.desc)} ${p.rutinas.map((r) => esc(r.nombre)).join(' · ')}</small></button></li>`).join('')}</ul>`;
+  const cuerpo = bienvenida
+    ? `<p class="muted">Tu bitácora para el gimnasio: rutinas por día, series listas para marcar, descanso con alarma y tu progreso.</p>
+       <label class="lbl" for="bv-nombre">¿Cómo te llamas?</label><input class="txt" id="bv-nombre" maxlength="30" autocomplete="given-name" enterkeyhint="done" placeholder="Tu nombre" value="${esc(S.ajustes.nombre || '')}">
+       ${hayRutinas ? '<p class="muted small">Tus rutinas y entrenamientos siguen aquí. Ahora puedes corregir entrenamientos pasados, anotar días anteriores, cambiar un ejercicio en plena sesión y dejar notas.</p>' : `<p class="lbl">¿Partes con una rutina lista? (opcional)</p>${lista}`}`
+    : `<p class="muted small">Se crean las rutinas con sus ejercicios, series y reps. Si tu semana está vacía, también quedan asignadas a sus días. Después puedes cambiar todo.</p>${lista}`;
+  return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
+    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">${bienvenida ? '¡Bienvenido a tu Bitácora de Fuerza!' : 'Rutinas listas'}</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
+    <div class="sheet-body">${cuerpo}</div>
+    ${bienvenida ? '<footer class="sheet-foot"><span></span><button class="btn primary" data-action="bienvenida-ok">Empezar</button></footer>' : ''}
+  </section></div>`;
+}
+function terminarBienvenida() {
+  const sh = S.sheet, nombre = String(($('#bv-nombre') || {}).value || '').trim().slice(0, 30), pid = sh && sh.pid;
+  S.sheet = null; S.sheetDirty = true;
+  guardarAjustes({ nombre, bienvenida: 1 });
+  if (pid) aplicarPlantilla(pid, true);
+  else toast(nombre ? `¡Hola, ${nombre}! A entrenar.` : 'Listo. A entrenar.');
+}
+function abrirLinkPegado() {
+  const t = String(($('#pegar-link') || {}).value || ''), i = t.indexOf('#r=');
+  const r = i >= 0 ? leerRutinaCompartida(t.slice(i + 3).trim().split(/\s/)[0]) : null;
+  if (!r) { toast('Ese link no es una rutina o está incompleto.'); return; }
+  const el = $('#pegar-link'); if (el) { el.value = ''; el.blur(); }
+  S.sheet = { tipo: 'rutina-compartida', rutina: r }; S.sheetDirty = true; render();
+}
+async function compartirResumen() {
+  if (!S.resumen) return;
+  const texto = textoResumen(S.resumen);
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ text: texto }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(texto); toast('Resumen copiado. Pégalo donde quieras.'); }
+  catch (e) { toast('No se pudo copiar el resumen.'); }
+}
+/* Aviso de versión nueva: compara con version.json (que se publica junto a la app). */
+let ultimaRevision = 0;
+async function revisarVersion() {
+  if (location.protocol === 'file:' || Date.now() - ultimaRevision < 10 * 60000) return;
+  ultimaRevision = Date.now();
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.v && d.v !== VERSION) { const el = $('#nueva-version'); if (el) el.hidden = false; }
+  } catch (e) { /* sin internet: se revisa la próxima vez */ }
+}
 
 /* ================= Guardado en este dispositivo ================= */
 /* Imita la base de datos que usaba la versión de Claude (doc/collection/onSnapshot), pero guarda todo en
@@ -1474,7 +1971,8 @@ const fechaDeISO = (iso) => fCorta(new Date(iso).toLocaleDateString('sv-SE'));
 async function bajarRespaldo() {
   if (!S.db) return;
   const cuerpo = { app: 'bitacora-fuerza', version: 1, exportado: new Date().toISOString(), datos: S.db.exportar() };
-  const nombre = `bitacora-fuerza-${hoyISO()}.json`;
+  const quien = sinTildes(S.ajustes.nombre || '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const nombre = `bitacora-fuerza-${quien ? quien + '-' : ''}${hoyISO()}.json`;
   const blob = new Blob([JSON.stringify(cuerpo)], { type: 'application/json' });
   let listo = false;
   try {
@@ -1490,7 +1988,7 @@ async function bajarRespaldo() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
   guardarLocal('bf-ultimo-respaldo', new Date().toISOString());
-  toast('Respaldo listo. Guárdalo en Drive, en tu correo o en un chat contigo mismo.');
+  toast(listo ? 'Respaldo listo. Guárdalo en Drive, en tu correo o en un chat contigo mismo.' : `Se descargó «${nombre}» (en el celular queda en Descargas). Súbelo a Drive o mándatelo por correo.`);
   render();
 }
 function validarRespaldo(obj) {
@@ -1517,18 +2015,26 @@ function leerArchivoRespaldo(input) {
 async function aplicarImportacion() {
   const sh = S.sheet;
   if (!sh || sh.tipo !== 'importar' || !S.db) return;
+  vaciarPendientes();
+  const copia = S.db.exportar(); // por si fue un error: se puede deshacer
   try { await S.db.reemplazar(sh.datos); } catch (e) { errorEscritura(e); return; }
   pend.clear(); bump();
   const c = contar(sh.datos);
-  S.sheet = null; S.sheetDirty = true; S.vista = null; S.tab = 'hoy';
+  S.sheet = null; S.sheetDirty = true; S.vista = null; S.tab = 'hoy'; S.resumen = null; guardarLocal('bf-resumen', null);
   render(); window.scrollTo({ top: 0 });
-  toast(`Listo: se cargaron ${c.sesiones} entrenamientos y ${c.rutinas} rutinas.`);
+  toast(`Listo: se cargaron ${c.sesiones} entrenamientos y ${c.rutinas} rutinas.`, { label: 'Deshacer', fn: async () => {
+    try { await S.db.reemplazar(copia); } catch (e) { errorEscritura(e); return; }
+    pend.clear(); bump(); render(); toast('Se restauraron tus datos anteriores.');
+  } });
 }
 function sheetImportar(sh) {
   const c = contar(sh.datos), act = S.db ? contar(S.db.exportar()) : { sesiones: 0, rutinas: 0 };
+  const de = String((sh.datos.config && sh.datos.config.ajustes && sh.datos.config.ajustes.nombre) || '').trim(), yo = String(S.ajustes.nombre || '').trim();
+  const otro = de && yo && sinTildes(de) !== sinTildes(yo);
   return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
     <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">Cargar datos</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
-    <div class="sheet-body"><p>Desde ${esc(sh.origen || 'un respaldo')}${sh.exportado ? `, guardado el ${esc(fechaDeISO(sh.exportado))}` : ''}:</p>
+    <div class="sheet-body"><p>Desde ${esc(sh.origen || 'un respaldo')}${de ? ` de <b>${esc(de)}</b>` : ''}${sh.exportado ? `, guardado el ${esc(fechaDeISO(sh.exportado))}` : ''}:</p>
+      ${otro ? `<p class="aviso">Ojo: este respaldo es de ${esc(de)} y esta bitácora es de ${esc(yo)}.</p>` : ''}
       <ul class="ej-lista"><li><span>Entrenamientos</span><span class="num">${c.sesiones}</span></li><li><span>Rutinas</span><span class="num">${c.rutinas}</span></li><li><span>Ejercicios propios</span><span class="num">${c.ejercicios}</span></li></ul>
       ${act.sesiones || act.rutinas ? `<p class="aviso">Esto reemplaza lo que tienes ahora en este celular (${act.sesiones} entrenamientos y ${act.rutinas} rutinas).</p>` : ''}</div>
     <footer class="sheet-foot"><button class="btn ghost" data-action="cerrar-sheet">Cancelar</button><button class="btn primary" data-action="importar-ok">Cargar estos datos</button></footer>
@@ -1544,9 +2050,10 @@ async function compartirRutina(rid) {
   if (!r || !r.items.length) return;
   const propios = {};
   for (const it of r.items) if (S.ejercicios.has(it.ej)) { const i = infoEj(it.ej); propios[it.ej] = { nombre: i.nombre, musculo: i.musculo, tipo: i.tipo }; }
-  const datos = { v: 1, n: r.nombre, i: r.items.map(({ ej, series, reps, descanso }) => ({ ej, series, reps, descanso })), e: propios };
+  const autor = String(S.ajustes.nombre || '').trim().slice(0, 30);
+  const datos = { v: 1, n: r.nombre, a: autor || undefined, i: r.items.map(({ ej, series, reps, descanso }) => ({ ej, series, reps, descanso })), e: propios };
   const url = linkBase() + '#r=' + aB64(JSON.stringify(datos));
-  const texto = `Te paso mi rutina «${r.nombre}» para la Bitácora de Fuerza. Abre el link y toca «Agregar a mis rutinas»:`;
+  const texto = `${autor ? `${autor} te pasa` : 'Te paso'} la rutina «${r.nombre}» para la Bitácora de Fuerza. Abre el link y toca «Agregar a mis rutinas»:`;
   if (navigator.share && matchMedia('(pointer: coarse)').matches) {
     try { await navigator.share({ title: r.nombre, text: texto, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
   }
@@ -1571,32 +2078,42 @@ function leerRutinaCompartida(code) {
     if (!d || !Array.isArray(d.i) || !d.i.length) return null;
     const items = d.i.filter((x) => x && /^[a-z0-9-]{1,60}$/i.test(String(x.ej))).slice(0, 40).map((x) => ({
       ej: String(x.ej), series: Math.max(1, Math.min(10, Number(x.series) || 3)),
-      reps: Math.max(1, Math.min(600, Number(x.reps) || 10)), descanso: Math.max(0, Math.min(600, Number(x.descanso) || 0)),
+      reps: Math.max(1, Math.min(600, Number(x.reps) || 10)),
+      descanso: typeof x.descanso === 'number' ? Math.max(0, Math.min(600, x.descanso)) : null,
     }));
     if (!items.length) return null;
-    return { nombre: String(d.n || 'Rutina compartida').slice(0, 60), items, propios: d.e && typeof d.e === 'object' ? d.e : {} };
+    return { nombre: String(d.n || 'Rutina compartida').slice(0, 60), autor: typeof d.a === 'string' ? d.a.slice(0, 30) : '', items, propios: d.e && typeof d.e === 'object' ? d.e : {}, code };
   } catch (e) { return null; }
 }
 const nombreCompartido = (r, ej) => (LIB_MAP.has(ej) || S.ejercicios.has(ej) ? infoEj(ej).nombre : String((r.propios[ej] && r.propios[ej].nombre) || 'Ejercicio').slice(0, 60));
 function sheetRutinaCompartida(sh) {
   const r = sh.rutina;
   return `<div class="sheet-wrap"><button class="sheet-bg" data-action="cerrar-sheet" aria-label="Cerrar"></button><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t">
-    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">Te compartieron una rutina</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
+    <header class="sheet-head"><h2 id="sheet-t" tabindex="-1">${r.autor ? `${esc(r.autor)} te compartió una rutina` : 'Te compartieron una rutina'}</h2><button class="icon-btn" data-action="cerrar-sheet" aria-label="Cerrar">✕</button></header>
     <div class="sheet-body"><h3>${esc(r.nombre)}</h3><ul class="ej-lista">${r.items.map((it) => `<li><span>${esc(nombreCompartido(r, it.ej))}</span><span class="num">${it.series} × ${it.reps}</span></li>`).join('')}</ul>
-      <p class="muted small">Se agrega a tus rutinas sin tocar lo que ya tienes. Después la asignas a un día en «Semana».</p></div>
+      <p class="muted small">Se agrega a tus rutinas sin tocar lo que ya tienes. Después la asignas a un día en «Semana».</p>
+      ${esIOS() && !esInstalada() ? '<p class="aviso small">En iPhone, si ya tienes la Bitácora en tu pantalla de inicio, la rutina no llega sola a la app: copia el link, abre la app y pégalo en Ajustes → «Agregar una rutina que te mandaron».</p><button class="btn" data-action="copiar-link-rutina">Copiar link</button>' : ''}</div>
     <footer class="sheet-foot"><button class="btn ghost" data-action="cerrar-sheet">No, gracias</button><button class="btn primary" data-action="rutina-ok">Agregar a mis rutinas</button></footer>
   </section></div>`;
 }
 async function agregarRutinaCompartida() {
   const sh = S.sheet;
   if (!sh || sh.tipo !== 'rutina-compartida') return;
-  const { nombre, items, propios } = sh.rutina;
+  const { nombre, propios } = sh.rutina, items = clonar(sh.rutina.items);
   for (const it of items) {
-    if (LIB_MAP.has(it.ej) || S.ejercicios.has(it.ej)) continue;
-    const p = propios[it.ej] || {}, musculo = MUSCULO_NOMBRE[p.musculo] ? p.musculo : 'otro', tipo = TIPOS[p.tipo] ? p.tipo : 'maquina';
-    const body = { nombre: String(p.nombre || 'Ejercicio').slice(0, 60), musculo, tipo, inc: defInc(tipo, musculo), creado: new Date().toISOString() };
-    S.ejercicios.set(it.ej, body);
-    await escribir('ejercicios/' + it.ej, () => S.db.doc('ejercicios/' + it.ej).set(body));
+    if (LIB_MAP.has(it.ej)) continue;
+    const p = propios[it.ej] || {}, nom = String(p.nombre || 'Ejercicio').slice(0, 60);
+    const mio = S.ejercicios.get(it.ej);
+    if (mio && sinTildes(mio.nombre || '') === sinTildes(nom)) continue; // ya lo tienes
+    // si no existe, o el id choca con otro ejercicio tuyo, se crea uno nuevo con su nombre
+    const igual = [...S.ejercicios.entries()].find(([, e]) => sinTildes(e.nombre || '') === sinTildes(nom));
+    if (igual) { it.ej = igual[0]; continue; }
+    const musculo = MUSCULO_NOMBRE[p.musculo] ? p.musculo : 'otro', tipo = TIPOS[p.tipo] ? p.tipo : 'maquina';
+    const nid = mio ? nuevoId('e') : it.ej;
+    const body = { nombre: nom, musculo, tipo, inc: defInc(tipo, musculo), creado: new Date().toISOString() };
+    S.ejercicios.set(nid, body);
+    it.ej = nid;
+    await escribir('ejercicios/' + nid, () => S.db.doc('ejercicios/' + nid).set(body));
   }
   S.sheet = null; S.sheetDirty = true;
   await crearRutina(nombre, items);
@@ -1628,8 +2145,8 @@ async function revisarLinkEntrante() {
 
 /* ================= Instalar como app ================= */
 let promptInstalar = null;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); promptInstalar = e; render(); });
-window.addEventListener('appinstalled', () => { promptInstalar = null; guardarLocal('bf-instalar-oculto', true); toast('¡Listo! Ya la tienes como app.'); render(); });
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); promptInstalar = e; renderFondo(); });
+window.addEventListener('appinstalled', () => { promptInstalar = null; guardarLocal('bf-instalar-oculto', true); toast('¡Listo! Ya la tienes como app.'); renderFondo(); });
 const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const esIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 async function instalarApp() {
@@ -1644,17 +2161,19 @@ function registrarSW() {
 }
 function avisosApp() {
   let h = '';
-  if (!esInstalada() && !leerLocal('bf-instalar-oculto')) {
+  const safariIOS = esIOS() && !esInstalada();
+  if (!esInstalada() && (safariIOS || !leerLocal('bf-instalar-oculto'))) {
     const pasos = promptInstalar
       ? '<button class="btn primary" data-action="instalar">Instalar en este celular</button>'
       : esIOS()
         ? '<p class="small">En Safari toca <b>Compartir</b> (el cuadrado con la flecha ↑) y después <b>«Agregar a inicio»</b>.</p>'
         : '<p class="small">En Chrome toca el menú <b>⋮</b> y después <b>«Instalar app»</b> o <b>«Agregar a la pantalla principal»</b>.</p>';
-    h += `<article class="card"><header><h3>Tenla como app</h3><p class="muted small">Queda con su ícono en el celular, abre a pantalla completa y funciona sin internet en el gimnasio.</p></header>${pasos}<button class="btn link" data-action="ocultar-instalar">Ya la instalé / ocultar</button></article>`;
+    const ojo = safariIOS ? '<p class="small"><b>Importante en iPhone:</b> si la usas desde Safari y pasas 7 días sin abrirla, el iPhone puede borrar tus datos. Instalada en la pantalla de inicio no pasa. Ojo: la app instalada parte vacía; antes descarga un respaldo aquí y cárgalo allá en Ajustes.</p>' : '';
+    h += `<article class="card"><header><h3>Tenla como app</h3><p class="muted small">Queda con su ícono en el celular, abre a pantalla completa y funciona sin internet en el gimnasio.</p></header>${ojo}${pasos}${safariIOS ? '' : '<button class="btn link" data-action="ocultar-instalar">Ya la instalé / ocultar</button>'}</article>`;
   }
   const n = getSesiones().filter((s) => hechasDe(s)).length, ult = leerLocal('bf-ultimo-respaldo');
   const dias = ult ? Math.floor((Date.now() - new Date(ult).getTime()) / 86400000) : null;
-  if (n >= 3 && (dias === null || dias >= 14)) {
+  if (n >= (safariIOS ? 1 : 3) && (dias === null || dias >= (safariIOS ? 5 : 7))) {
     h += `<article class="card"><header><h3>Guarda un respaldo</h3><p class="muted small">${dias === null ? 'Todavía no descargas ninguno.' : `El último fue hace ${dias} días.`} Tus entrenamientos viven en este celular: con el respaldo no se pierden si cambias de teléfono.</p></header><button class="btn" data-action="respaldo-bajar">Descargar respaldo</button></article>`;
   }
   return h;
@@ -1673,32 +2192,34 @@ async function conectar() {
   const db = crearDbLocal();
   S.db = db;
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* sin persistencia */ }
-  const alError = (e) => { if (e && (e.code === 'revoked' || e.code === 'not_granted' || e.code === 'capability_disabled')) { S.sinDb = true; S.db = null; } render(); };
+  const alError = (e) => { if (e && (e.code === 'revoked' || e.code === 'not_granted' || e.code === 'capability_disabled')) { S.sinDb = true; S.db = null; } renderFondo(); };
+  // Cada aviso actualiza los datos y pide UN render, que espera si estás escribiendo (así no se cierra el teclado).
   db.collection('ejercicios').onSnapshot((snap) => {
     const m = new Map(snap.docs.map((d) => [d.id, d.data()]));
     for (const [id, v] of S.ejercicios) if (!m.has(id) && snap.metadata.hasPendingWrites) m.set(id, v);
-    S.ejercicios = m; S.cargado.ejercicios = true; bump(); render();
+    S.ejercicios = m; S.cargado.ejercicios = true; bump(); renderFondo();
   }, alError);
   db.collection('rutinas').onSnapshot((snap) => {
     S.rutinasRaw = new Map(snap.docs.map((d) => [d.id, d.data()]));
     if (!snap.metadata.hasPendingWrites) limpiarPend('rutinas/');
-    S.cargado.rutinas = true; bump(); render();
+    S.cargado.rutinas = true; bump(); renderFondo();
   }, alError);
-  db.collection('sesiones').orderBy('inicio', 'desc').limit(500).onSnapshot((snap) => {
+  db.collection('sesiones').orderBy('inicio', 'desc').limit(5000).onSnapshot((snap) => {
     S.sesionesRaw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (!snap.metadata.hasPendingWrites) limpiarPend('sesiones/');
-    S.cargado.sesiones = true; bump(); render();
-    if (sesionActiva()) pedirWakeLock();
+    S.cargado.sesiones = true; bump(); renderFondo();
+    const s = sesionActiva();
+    if (s && s.fecha === hoyISO()) pedirWakeLock();
   }, alError);
   db.doc('plan/semana').onSnapshot((snap) => {
     S.planRaw = snap.exists ? snap.data() : null;
     if (!snap.metadata.hasPendingWrites) limpiarPend('plan/');
-    S.cargado.plan = true; render();
+    S.cargado.plan = true; bump(); renderFondo();
   }, alError);
   db.doc('config/ajustes').onSnapshot((snap) => {
     const d = snap.exists ? snap.data() : {};
     S.ajustes = { ...DEFAULTS, ...d, discos: Array.isArray(d.discos) && d.discos.length ? d.discos : DEFAULTS.discos };
-    render();
+    S.cargado.config = true; renderFondo();
   }, alError);
 }
 
@@ -1710,10 +2231,21 @@ function start(data) {
   if (data && TABS.includes(data.tab)) S.tab = data.tab;
   const tm = (data && data.timer) || leerLocal('bf-timer');
   if (tm && tm.end > Date.now() - 60000) S.timer = tm;
+  S.resumen = leerLocal('bf-resumen');
   render(); setInterval(tick, 250);
+  setInterval(revisarCambioDeDia, 60000);
   conectar();
   revisarLinkEntrante();
   registrarSW();
+  setTimeout(revisarVersion, 3000);
+  ajustarAlTeclado();
+}
+/* Con el teclado abierto, la hoja inferior se acomoda al espacio que queda visible. */
+function ajustarAlTeclado() {
+  if (!window.visualViewport) return;
+  const vv = window.visualViewport, st = document.documentElement.style;
+  const aj = () => { st.setProperty('--vvh', vv.height + 'px'); st.setProperty('--vvt', vv.offsetTop + 'px'); };
+  vv.addEventListener('resize', aj); vv.addEventListener('scroll', aj); aj();
 }
 
 start({});
